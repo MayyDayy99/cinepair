@@ -12,8 +12,8 @@ import { getMovies, swipeMovie, subscribeToMatches, Movie } from './services/mov
 const Navbar = () => {
   const { profile } = useAuth();
   return (
-    <nav className="fixed top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm">
-      <div className="flex items-center gap-3">
+    <nav className="fixed top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm pointer-events-none">
+      <div className="w-10 flex items-center justify-start pointer-events-auto">
         {profile?.photoURL && (
           <motion.div 
             whileHover={{ scale: 1.05 }}
@@ -24,7 +24,7 @@ const Navbar = () => {
           </motion.div>
         )}
       </div>
-      <Link to="/" className="flex flex-col items-center">
+      <Link to="/" className="flex flex-col items-center pointer-events-auto">
         <span className="text-2xl font-black tracking-[-0.05em] text-gradient font-headline uppercase leading-none">
           CINEPAIR
         </span>
@@ -32,9 +32,7 @@ const Navbar = () => {
           Cinematic Match
         </span>
       </Link>
-      <Link to="/profile" className="text-on-surface-variant hover:text-primary transition-colors active:scale-90 duration-100">
-        <UserPlus size={24} />
-      </Link>
+      <div className="w-10" />
     </nav>
   );
 };
@@ -314,7 +312,7 @@ const SwipeScreen = () => {
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : null;
 
   return (
-    <div className="relative h-full w-full flex flex-col items-center justify-center px-6 pt-24 pb-32 overflow-hidden">
+    <div className="relative h-full w-full flex flex-col items-center justify-center px-6 pt-24 pb-36 overflow-hidden">
       <AnimatePresence>
         {showMatch && (
           <motion.div 
@@ -353,7 +351,7 @@ const SwipeScreen = () => {
                 </div>
               </div>
 
-              <div className="relative w-full max-w-[280px] aspect-[2/3] rounded-[2rem] overflow-hidden shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)] border border-white/10 mb-12">
+              <div className="relative w-full max-w-[280px] aspect-[2/3] max-h-[50vh] rounded-[2rem] overflow-hidden shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)] border border-white/10 mb-12">
                 <img src={showMatch.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-8 text-left">
@@ -380,7 +378,7 @@ const SwipeScreen = () => {
         )}
       </AnimatePresence>
 
-      <div className="relative w-full max-w-md aspect-[9/16] flex items-center justify-center">
+      <div className="relative w-full max-w-md aspect-[9/16] max-h-[60vh] flex items-center justify-center">
         <AnimatePresence mode="popLayout">
           {nextMovie && (
             <div 
@@ -401,7 +399,7 @@ const SwipeScreen = () => {
         </AnimatePresence>
       </div>
 
-      <div className="mt-12 flex items-center justify-center gap-10">
+      <div className="mt-8 flex items-center justify-center gap-10">
         <motion.button 
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
