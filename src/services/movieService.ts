@@ -219,6 +219,15 @@ export async function removeMatch(matchId: string) {
   }
 }
 
+export async function toggleMatchWatched(matchId: string, watched: boolean) {
+  const matchRef = doc(db, 'matches', matchId);
+  try {
+    await setDoc(matchRef, { watched }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'matches');
+  }
+}
+
 export function subscribeToMatches(userId: string, callback: (matches: any[]) => void) {
   const path = 'matches';
   const q = query(collection(db, path), where('userIds', 'array-contains', userId));
