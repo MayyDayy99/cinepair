@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
-import { getMovies, getMovieById, getUserSwipes, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
+import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, swipeMovie, undoSwipe, removeMatch, subscribeToMatches, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 
 // --- Components ---
@@ -332,12 +332,18 @@ const SwipeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [yearFilter, setYearFilter] = useState('');
+  const [genreFilter, setGenreFilter] = useState('');
+  const [genres, setGenres] = useState<{id: number; name: string}[]>([]);
   const [leaveDirection, setLeaveDirection] = useState<'left' | 'right' | null>(null);
+  const [lastSwipe, setLastSwipe] = useState<{movieId: string; index: number} | null>(null);
 
-  const loadMoreMovies = async (targetPage: number, forceYear?: string) => {
+  useEffect(() => { getGenreList().then(setGenres); }, []);
+
+  const loadMoreMovies = async (targetPage: number, forceYear?: string, forceGenre?: string) => {
     setLoading(true);
     const yr = forceYear !== undefined ? forceYear : yearFilter;
-    const fetchedMovies = await getMovies({ page: targetPage, year: yr });
+    const gr = forceGenre !== undefined ? forceGenre : genreFilter;
+    const fetchedMovies = await getMovies({ page: targetPage, year: yr, genreId: gr });
     
     if (user) {
       const swipedIds = await getUserSwipes(user.uid);
@@ -345,7 +351,7 @@ const SwipeScreen = () => {
       
       if (unswiped.length === 0 && fetchedMovies.length > 0) {
         setPage(targetPage + 1);
-        await loadMoreMovies(targetPage + 1, yr);
+        await loadMoreMovies(targetPage + 1, yr, gr);
         return;
       }
       setMovies(unswiped);
@@ -359,15 +365,15 @@ const SwipeScreen = () => {
 
   useEffect(() => {
     setPage(1);
-    loadMoreMovies(1, yearFilter);
-  }, [user, yearFilter]);
+    loadMoreMovies(1, yearFilter, genreFilter);
+  }, [user, yearFilter, genreFilter]);
 
   const processNext = () => {
     const nextIndex = currentIndex + 1;
     if (nextIndex >= movies.length) {
       const nextPage = page + 1;
       setPage(nextPage);
-      loadMoreMovies(nextPage, yearFilter);
+      loadMoreMovies(nextPage, yearFilter, genreFilter);
     } else {
       setCurrentIndex(nextIndex);
     }
@@ -376,20 +382,30 @@ const SwipeScreen = () => {
   const handleSwipe = async (type: 'like' | 'dislike') => {
     if (currentIndex >= movies.length) return;
     
-    setLeaveDirection(type === 'like' ? 'right' : 'left'); // Set exit animation custom prop
+    setLeaveDirection(type === 'like' ? 'right' : 'left');
+    navigator.vibrate?.(15);
     
-    // Give react time to register the direction before updating index to trigger exit
     setTimeout(async () => {
       const movie = movies[currentIndex];
+      setLastSwipe({ movieId: movie.id, index: currentIndex });
       const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerId);
       
       if (isMatch) {
+        navigator.vibrate?.([50, 30, 50]);
         setShowMatch(movie);
       } else {
         processNext();
         setLeaveDirection(null);
       }
     }, 10);
+  };
+
+  const handleUndo = async () => {
+    if (!lastSwipe || !user) return;
+    await undoSwipe(user.uid, lastSwipe.movieId);
+    navigator.vibrate?.(10);
+    setCurrentIndex(lastSwipe.index);
+    setLastSwipe(null);
   };
 
   const handleMatchContinue = () => {
@@ -460,7 +476,7 @@ const SwipeScreen = () => {
               className="relative z-10 flex flex-col items-center"
             >
               <div className="mb-2 px-4 py-1 bg-secondary text-black text-[10px] font-black rounded-full uppercase tracking-[0.3em]">
-                New Connection
+                Új Találat
               </div>
               <h1 className="font-headline font-black text-6xl md:text-8xl tracking-[-0.05em] text-primary leading-none mb-4 drop-shadow-[0_0_30px_rgba(245,197,24,0.5)]">
                 MATCH!
@@ -505,22 +521,32 @@ const SwipeScreen = () => {
         )}
       </AnimatePresence>
 
-      <div className="absolute top-16 sm:top-24 z-40 px-4 sm:px-6 w-full flex justify-between items-center pointer-events-none">
-        <select 
-          value={yearFilter}
-          aria-label="Év szűrő"
-          onChange={(e) => setYearFilter(e.target.value)}
-          className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl pointer-events-auto cursor-pointer focus:outline-none"
-        >
-          <option value="">Összes év</option>
-          <option value="2025">2025</option>
-          <option value="2024">2024</option>
-          <option value="2023">2023</option>
-          <option value="2022">2022</option>
-          <option value="2021">2021</option>
-          <option value="2020">2020</option>
-          <option value="2010">2010</option>
-        </select>
+      <div className="absolute top-16 sm:top-24 z-40 px-4 sm:px-6 w-full flex justify-between items-center pointer-events-none gap-2">
+        <div className="flex gap-2 pointer-events-auto">
+          <select 
+            value={yearFilter}
+            aria-label="Év szűrő"
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl cursor-pointer focus:outline-none"
+          >
+            <option value="">Összes év</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+            <option value="2020">2020</option>
+          </select>
+          <select 
+            value={genreFilter}
+            aria-label="Műfaj szűrő"
+            onChange={(e) => setGenreFilter(e.target.value)}
+            className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl cursor-pointer focus:outline-none"
+          >
+            <option value="">Összes műfaj</option>
+            {genres.map(g => <option key={g.id} value={g.id.toString()}>{g.name}</option>)}
+          </select>
+        </div>
         <div className="bg-black/50 border border-white/10 px-3 py-1.5 rounded-full backdrop-blur-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest text-primary pointer-events-auto">
           {currentIndex + 1} / {movies.length}
         </div>
@@ -548,24 +574,20 @@ const SwipeScreen = () => {
         </AnimatePresence>
       </div>
 
-      <div className="mt-4 sm:mt-8 flex items-center justify-center gap-8 sm:gap-10 shrink-0">
-        <motion.button 
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => handleSwipe('dislike')}
-          title="Nem tetszik"
-          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group"
-        >
-          <X size={28} className="sm:w-9 sm:h-9 text-error/60 group-hover:text-error group-hover:rotate-12 transition-all" />
+      <div className="mt-4 sm:mt-8 flex items-center justify-center gap-6 sm:gap-8 shrink-0">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('dislike')} title="Nem tetszik"
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group">
+          <X size={28} className="text-error/60 group-hover:text-error transition-all" />
         </motion.button>
-        <motion.button 
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => handleSwipe('like')}
-          title="Tetszik"
-          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-secondary/20 transition-colors group"
-        >
-          <Heart size={28} className="sm:w-9 sm:h-9 text-secondary/60 group-hover:text-secondary group-hover:scale-110 transition-all" fill="currentColor" />
+        {lastSwipe && (
+          <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} whileTap={{ scale: 0.9 }} onClick={handleUndo} title="Vissza"
+            className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10 shadow-xl hover:bg-white/10 transition-colors">
+            <Undo2 size={20} className="text-white/50" />
+          </motion.button>
+        )}
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('like')} title="Tetszik"
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-secondary/20 transition-colors group">
+          <Heart size={28} className="text-secondary/60 group-hover:text-secondary transition-all" fill="currentColor" />
         </motion.button>
       </div>
     </div>
@@ -613,7 +635,7 @@ const WatchlistScreen = () => {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px]">Loading Matches</p>
+        <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px]">Találatok betöltése</p>
       </div>
     );
   }
@@ -622,12 +644,12 @@ const WatchlistScreen = () => {
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
       <div className="mb-10 flex items-end justify-between">
         <div>
-          <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Your Collection</p>
+          <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Közös gyűjtemény</p>
           <h1 className="text-4xl font-black font-headline tracking-tight uppercase">Watchlist</h1>
         </div>
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full">
           <p className="text-xs font-bold text-white/60">
-            <span className="text-primary">{matchedMovies.length}</span> FILMS
+            <span className="text-primary">{matchedMovies.length}</span> FILM
           </p>
         </div>
       </div>
@@ -699,13 +721,19 @@ const MovieDetailScreen = () => {
   const { id } = useParams();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
+  const [showTrailer, setShowTrailer] = useState(false);
 
   useEffect(() => {
     const loadMovie = async () => {
       if (id) {
         setLoading(true);
-        const movieData = await getMovieById(id);
+        const [movieData, trailer] = await Promise.all([
+          getMovieById(id),
+          getMovieTrailer(id)
+        ]);
         setMovie(movieData);
+        setTrailerUrl(trailer);
         setLoading(false);
       }
     };
@@ -716,7 +744,7 @@ const MovieDetailScreen = () => {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px]">Loading Details</p>
+        <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px]">Részletek betöltése</p>
       </div>
     );
   }
@@ -793,7 +821,7 @@ const MovieDetailScreen = () => {
       {/* Content Section */}
       <div className="px-8 space-y-10">
         <section className="space-y-4">
-          <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">The Synopsis</h3>
+          <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Összefoglaló</h3>
           <p className="text-lg leading-relaxed text-on-surface/90 font-light max-w-3xl">
             {movie.synopsis}
           </p>
@@ -801,14 +829,14 @@ const MovieDetailScreen = () => {
 
         <section className="grid grid-cols-2 gap-4">
           <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] flex flex-col items-center text-center">
-            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">Popularity</span>
+            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">Népszerűség</span>
             <div className="flex items-center gap-2 text-secondary">
               <TrendingUp size={20} />
-              <span className="text-xl font-black font-headline uppercase tracking-tight">Trending</span>
+              <span className="text-xl font-black font-headline uppercase tracking-tight">Felkapott</span>
             </div>
           </div>
           <div className="p-6 bg-white/5 border border-white/5 rounded-[2rem] flex flex-col items-center text-center">
-            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">IMDb Score</span>
+            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">IMDb Pontszám</span>
             <div className="flex items-center gap-1 text-primary">
               <span className="text-2xl font-black font-headline uppercase tracking-tight">{movie.rating}</span>
               <span className="text-xs font-bold opacity-40">/10</span>
@@ -816,18 +844,30 @@ const MovieDetailScreen = () => {
           </div>
         </section>
 
-        <section className="pt-6 border-t border-white/5">
-          <button className="w-full py-5 bg-primary text-black font-headline font-black rounded-2xl shadow-2xl shadow-primary/20 flex items-center justify-center gap-3 uppercase tracking-tight active:scale-95 transition-transform">
-            <PlayCircle size={28} /> Watch Trailer
-          </button>
-          <button className="w-full mt-4 py-5 bg-white/5 border border-white/10 rounded-2xl text-white font-headline font-bold uppercase tracking-widest text-xs active:scale-95 transition-transform">
-            Megosztás
-          </button>
-        </section>
+        {showTrailer && trailerUrl && (
+          <section className="rounded-2xl overflow-hidden aspect-video bg-black border border-white/10">
+            <iframe src={trailerUrl} className="w-full h-full" allowFullScreen title="Trailer" />
+          </section>
+        )}
 
-        <section className="pt-2">
-          <button className="w-full py-4 text-error/60 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:text-error transition-colors">
-            <HeartOff size={16} /> Remove from Matches
+        <section className="pt-6 border-t border-white/5">
+          {trailerUrl ? (
+            <button onClick={() => setShowTrailer(!showTrailer)} className="w-full py-5 bg-primary text-black font-headline font-black rounded-2xl shadow-2xl shadow-primary/20 flex items-center justify-center gap-3 uppercase tracking-tight active:scale-95 transition-transform">
+              <PlayCircle size={28} /> {showTrailer ? 'Előzetes elrejtése' : 'Előzetes megnézése'}
+            </button>
+          ) : (
+            <button disabled className="w-full py-5 bg-white/5 text-white/30 font-headline font-black rounded-2xl flex items-center justify-center gap-3 uppercase tracking-tight cursor-not-allowed">
+              <PlayCircle size={28} /> Nincs elérhető előzetes
+            </button>
+          )}
+          <button onClick={() => {
+            if (navigator.share) {
+              navigator.share({ title: movie.title, text: `Nézd meg: ${movie.title} (${movie.year})`, url: window.location.href });
+            } else {
+              navigator.clipboard.writeText(window.location.href);
+            }
+          }} className="w-full mt-4 py-5 bg-white/5 border border-white/10 rounded-2xl text-white font-headline font-bold uppercase tracking-widest text-xs active:scale-95 transition-transform">
+            Megosztás
           </button>
         </section>
       </div>
@@ -879,7 +919,7 @@ const ProfileScreen = () => {
 
         {/* Partner Connection Section */}
         <div className="space-y-4">
-          <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40 ml-4">Partner Connection</h3>
+          <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40 ml-4">Partner összekötés</h3>
           <div className="bg-glass rounded-[2rem] p-8 border border-white/5 shadow-2xl space-y-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary border border-secondary/20">
