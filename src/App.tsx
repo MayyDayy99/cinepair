@@ -97,8 +97,8 @@ const LoginScreen = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0a] relative overflow-hidden font-sans">
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-red-600/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse" style={{ animationDuration: '4s' }} />
-        <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-orange-500/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
+        <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-red-600/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse [animation-duration:4s]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-orange-500/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse [animation-duration:6s] [animation-delay:2s]" />
         <motion.div 
           animate={{ rotate: 360 }} 
           transition={{ duration: 120, repeat: Infinity, ease: "linear" }} 
@@ -221,6 +221,21 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
   const infoOpacity = useTransform(y, [-150, -50], [1, 0]);
   const scale = useTransform(x, [-200, 0, 200], [0.95, 1, 0.95]);
 
+  useEffect(() => {
+    return x.on("change", (latestX) => {
+      const el = document.getElementById('swipe-glow-overlay');
+      if (el) {
+        if (latestX > 0) {
+          el.style.backgroundColor = `rgba(0, 255, 136, ${Math.min(latestX / 200, 1) * 0.15})`;
+        } else if (latestX < 0) {
+          el.style.backgroundColor = `rgba(255, 77, 77, ${Math.min(-latestX / 200, 1) * 0.15})`;
+        } else {
+          el.style.backgroundColor = 'transparent';
+        }
+      }
+    });
+  }, [x]);
+
   const onDragEnd = (_: any, info: any) => {
     if (info.offset.x > 100) {
       onSwipe('like');
@@ -252,11 +267,7 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
       })}
       className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab bg-surface-container-highest border border-white/5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.6)]"
     >
-      {!imageLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-surface">
-          <Loader2 className="w-10 h-10 text-primary/20 animate-spin" />
-        </div>
-      )}
+      <div className={`absolute inset-0 bg-surface-container-highest animate-pulse transition-opacity duration-300 z-[-1] pointer-events-none ${imageLoaded ? 'opacity-0' : 'opacity-100'}`} />
       
       <motion.div 
         style={{ opacity: likeOpacity }}
@@ -451,6 +462,8 @@ const SwipeScreen = () => {
 
   return (
     <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pb-2 overflow-hidden">
+      <div id="swipe-glow-overlay" className="absolute inset-0 z-0 pointer-events-none transition-colors duration-100" />
+      
       <AnimatePresence>
         {showMatch && (
           <motion.div 
@@ -535,7 +548,7 @@ const SwipeScreen = () => {
         </div>
       </div>
 
-      <div className="relative w-full flex-1 max-w-md flex items-center justify-center" style={{ minHeight: 0 }}>
+      <div className="relative w-full flex-1 max-w-md flex items-center justify-center z-10" style={{ minHeight: 0 }}>
         <AnimatePresence mode="popLayout" custom={leaveDirection}>
           {nextMovie && (
             <div 
