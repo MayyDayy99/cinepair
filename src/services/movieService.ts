@@ -1,6 +1,5 @@
-import { collection, doc, setDoc, getDoc, query, where, onSnapshot, serverTimestamp, addDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, query, where, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
-import { GoogleGenAI, Type } from "@google/genai";
 
 export interface Movie {
   id: string;
@@ -19,71 +18,50 @@ export const MOCK_MOVIES: Movie[] = [
     title: 'NEON DRIFT',
     year: '2024',
     rating: 8.4,
-    posterUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD5i7b2qkzK-wx_lJ8b6oJrBfj5EKGy4Lu7VgJvp4D-7l8L_Sv6q2ioMBSAm8oBJCLoRgFrEZRwYTwTnf4MMw23WqZJUC4x6A56Y0S8S9ulpT4l4lSBi18YLdcpl7_UTXoHPgfTCO3gXMaEZ6JZ0d01UZQq6wiH8rjokebGjcCunW9j-o6fX8XdUw5yVxqccDhbqyhGflh5m7oFRwTtNTDjSMOhkhBZa4bBndwLwAa8TzV2AJki2xLl29iew5ld6I6UfqZ4_MQwzpU',
+    posterUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1025&auto=format&fit=crop',
     synopsis: 'In a decaying metropolis, a memory thief uncovers a conspiracy that could rewrite the history of human consciousness.',
     genres: ['Sci-Fi', 'Thriller'],
     duration: '2h 10m'
+  },
+  {
+    id: '2',
+    title: 'THE LAST SILENCE',
+    year: '2023',
+    rating: 7.9,
+    posterUrl: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=1170&auto=format&fit=crop',
+    synopsis: 'A deaf hunter in a post-apocalyptic world must protect her village from creatures that hunt by sound.',
+    genres: ['Horror', 'Drama'],
+    duration: '1h 45m'
+  },
+  {
+    id: '3',
+    title: 'COSMIC REACH',
+    year: '2024',
+    rating: 8.1,
+    posterUrl: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?q=80&w=1172&auto=format&fit=crop',
+    synopsis: 'The first manned mission to Proxima Centauri discovers that they are not the first humans to leave Earth.',
+    genres: ['Sci-Fi', 'Adventure'],
+    duration: '2h 30m'
   }
 ];
-
-export async function fetchMoviesFromGemini(): Promise<Movie[]> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: "List 15 currently popular movies (2024-2026 releases). For each movie, provide: title, year, IMDb rating (number), a REAL high-quality poster URL from IMDb or a reliable movie database (DO NOT use placeholders like picsum.photos), a 2-sentence synopsis, 2-3 genres, and duration (e.g. 2h 15m). Return as a JSON array. Ensure the poster URLs are direct image links that work.",
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              title: { type: Type.STRING },
-              year: { type: Type.STRING },
-              rating: { type: Type.NUMBER },
-              posterUrl: { type: Type.STRING },
-              synopsis: { type: Type.STRING },
-              genres: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              duration: { type: Type.STRING }
-            },
-            required: ["id", "title", "year", "rating", "posterUrl", "synopsis", "genres", "duration"]
-          }
-        }
-      }
-    });
-
-    const movies = JSON.parse(response.text);
-    
-    // Save movies to Firestore so they are available for both users
-    for (const movie of movies) {
-      await setDoc(doc(db, 'movies', movie.id), movie, { merge: true });
-    }
-    
-    return movies;
-  } catch (error) {
-    console.error("Error fetching movies from Gemini:", error);
-    return MOCK_MOVIES;
-  }
-}
 
 export async function getMovies(): Promise<Movie[]> {
   const path = 'movies';
   try {
     const querySnapshot = await getDocs(collection(db, path));
     const movies = querySnapshot.docs.map(doc => doc.data() as Movie);
-    return movies.length > 0 ? movies : fetchMoviesFromGemini();
+    // If no movies in Firestore, seed with MOCK_MOVIES
+    if (movies.length === 0) {
+      await seedMovies();
+      return MOCK_MOVIES;
+    }
+    return movies;
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
+    console.warn("Falling back to mock movies due to error:", error);
     return MOCK_MOVIES;
   }
 }
+
 
 export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerId?: string) {
   const path = `users/${userId}/swipes`;
