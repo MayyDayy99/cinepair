@@ -265,49 +265,50 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
       
       <motion.div 
         style={{ opacity: likeOpacity }}
-        className="absolute top-12 left-12 z-50 border-4 border-secondary text-secondary font-headline font-black text-5xl px-6 py-3 rounded-2xl rotate-[-15deg] uppercase tracking-tighter"
+        className="absolute top-8 left-8 z-50 border-4 border-secondary text-secondary font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl rotate-[-15deg] uppercase tracking-tighter"
       >
         LIKE
       </motion.div>
       <motion.div 
         style={{ opacity: nopeOpacity }}
-        className="absolute top-12 right-12 z-50 border-4 border-error text-error font-headline font-black text-5xl px-6 py-3 rounded-2xl rotate-[15deg] uppercase tracking-tighter"
+        className="absolute top-8 right-8 z-50 border-4 border-error text-error font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl rotate-[15deg] uppercase tracking-tighter"
       >
         NOPE
       </motion.div>
       <motion.div 
         style={{ opacity: infoOpacity }}
-        className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 border-4 border-primary text-primary font-headline font-black text-5xl px-6 py-3 rounded-2xl uppercase tracking-tighter whitespace-nowrap"
+        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 border-4 border-primary text-primary font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl uppercase tracking-tighter whitespace-nowrap"
       >
         INFO
       </motion.div>
 
       <img 
         src={movie.posterUrl} 
+        alt={movie.title}
         onLoad={() => setImageLoaded(true)}
         className={`w-full h-full object-cover pointer-events-none transition-all duration-700 ease-out ${imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`} 
         referrerPolicy="no-referrer" 
       />
       <div className="absolute inset-0 poster-gradient pointer-events-none" />
       
-      <div className="absolute bottom-0 left-0 w-full p-10 flex flex-col gap-5 pointer-events-none">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
+      <div className="absolute bottom-0 left-0 w-full p-6 sm:p-10 flex flex-col gap-3 sm:gap-5 pointer-events-none">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <span className="px-3 py-1 bg-primary text-black text-[10px] font-black rounded-full uppercase tracking-widest">IMDb {movie.rating}</span>
-            <span className="text-on-surface/60 font-label text-xs tracking-widest uppercase">{movie.year} • {movie.duration}</span>
+            <span className="text-on-surface/60 font-label text-[10px] sm:text-xs tracking-widest uppercase">{movie.year} • {movie.duration}</span>
           </div>
-          <h2 className="text-5xl font-black font-headline leading-[0.9] text-on-surface tracking-[-0.05em] uppercase break-words">
+          <h2 className="font-black font-headline leading-[0.9] text-on-surface tracking-[-0.04em] uppercase break-words" style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}>
             {movie.title}
           </h2>
         </div>
         
-        <p className="text-on-surface-variant text-sm leading-relaxed line-clamp-2 font-body opacity-80">
+        <p className="text-on-surface-variant text-xs sm:text-sm leading-relaxed line-clamp-2 font-body opacity-80">
           {movie.synopsis}
         </p>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {movie.genres.map(genre => (
-            <span key={genre} className="px-4 py-1.5 bg-white/5 rounded-full text-[10px] font-bold text-on-surface/60 uppercase tracking-widest border border-white/5">{genre}</span>
+            <span key={genre} className="px-3 py-1 sm:px-4 sm:py-1.5 bg-white/5 rounded-full text-[9px] sm:text-[10px] font-bold text-on-surface/60 uppercase tracking-widest border border-white/5">{genre}</span>
           ))}
         </div>
       </div>
@@ -438,7 +439,7 @@ const SwipeScreen = () => {
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : null;
 
   return (
-    <div className="relative h-full w-full flex flex-col items-center justify-center px-6 pt-24 pb-36 overflow-hidden">
+    <div className="relative h-full w-full flex flex-col items-center px-4 sm:px-6 pt-16 sm:pt-20 pb-4 overflow-hidden">
       <AnimatePresence>
         {showMatch && (
           <motion.div 
@@ -504,11 +505,12 @@ const SwipeScreen = () => {
         )}
       </AnimatePresence>
 
-      <div className="absolute top-24 z-40 px-6 w-full flex justify-between items-center pointer-events-none">
+      <div className="absolute top-16 sm:top-24 z-40 px-4 sm:px-6 w-full flex justify-between items-center pointer-events-none">
         <select 
           value={yearFilter}
+          aria-label="Év szűrő"
           onChange={(e) => setYearFilter(e.target.value)}
-          className="bg-black/50 text-white border border-white/10 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-widest backdrop-blur-xl pointer-events-auto cursor-pointer focus:outline-none"
+          className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl pointer-events-auto cursor-pointer focus:outline-none"
         >
           <option value="">Összes év</option>
           <option value="2025">2025</option>
@@ -519,12 +521,12 @@ const SwipeScreen = () => {
           <option value="2020">2020</option>
           <option value="2010">2010</option>
         </select>
-        <div className="bg-black/50 border border-white/10 px-4 py-2 rounded-full backdrop-blur-xl text-xs font-bold uppercase tracking-widest text-primary pointer-events-auto">
+        <div className="bg-black/50 border border-white/10 px-3 py-1.5 rounded-full backdrop-blur-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest text-primary pointer-events-auto">
           {currentIndex + 1} / {movies.length}
         </div>
       </div>
 
-      <div className="relative w-full max-w-md aspect-[9/16] max-h-[60vh] flex items-center justify-center">
+      <div className="relative w-full flex-1 max-w-md flex items-center justify-center" style={{ minHeight: 0 }}>
         <AnimatePresence mode="popLayout" custom={leaveDirection}>
           {nextMovie && (
             <div 
@@ -546,22 +548,24 @@ const SwipeScreen = () => {
         </AnimatePresence>
       </div>
 
-      <div className="mt-8 flex items-center justify-center gap-10">
+      <div className="mt-4 sm:mt-8 flex items-center justify-center gap-8 sm:gap-10 shrink-0">
         <motion.button 
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={() => handleSwipe('dislike')}
-          className="w-20 h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group"
+          title="Nem tetszik"
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group"
         >
-          <X size={36} className="text-error/60 group-hover:text-error group-hover:rotate-12 transition-all" />
+          <X size={28} className="sm:w-9 sm:h-9 text-error/60 group-hover:text-error group-hover:rotate-12 transition-all" />
         </motion.button>
         <motion.button 
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={() => handleSwipe('like')}
-          className="w-20 h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-secondary/20 transition-colors group"
+          title="Tetszik"
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-secondary/20 transition-colors group"
         >
-          <Heart size={36} className="text-secondary/60 group-hover:text-secondary group-hover:scale-110 transition-all" fill="currentColor" />
+          <Heart size={28} className="sm:w-9 sm:h-9 text-secondary/60 group-hover:text-secondary group-hover:scale-110 transition-all" fill="currentColor" />
         </motion.button>
       </div>
     </div>
