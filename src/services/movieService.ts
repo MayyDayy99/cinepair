@@ -251,6 +251,30 @@ export async function getUserSwipes(userId: string): Promise<string[]> {
   }
 }
 
+export async function getPartnerLikedMovies(partnerId: string, myUserId: string): Promise<Movie[]> {
+  try {
+    const partnerSwipesRef = collection(db, `users/${partnerId}/swipes`);
+    const q = query(partnerSwipesRef, where('type', '==', 'like'));
+    const partnerLikesSnap = await getDocs(q);
+    const partnerLikedIds = partnerLikesSnap.docs.map(doc => doc.id);
+    
+    // Also get my swipes to filter out what I already saw
+    const mySwipedIds = await getUserSwipes(myUserId);
+    const neededIds = partnerLikedIds.filter(id => !mySwipedIds.includes(id));
+    
+    // Fetch top 5-10 to mix in
+    const movies: Movie[] = [];
+    for (const id of neededIds.slice(0, 10)) {
+      const movie = await getMovieById(id);
+      if (movie) movies.push(movie);
+    }
+    return movies;
+  } catch (error) {
+    console.error("Error fetching partner likes:", error);
+    return [];
+  }
+}
+
 export async function seedMovies() {
   const path = 'movies';
   try {

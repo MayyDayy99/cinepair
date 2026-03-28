@@ -5,7 +5,7 @@ import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Shar
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, signInAsGuest, logout } from './firebase';
-import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, swipeMovie, undoSwipe, removeMatch, toggleMatchWatched, subscribeToMatches, Movie } from './services/movieService';
+import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, getPartnerLikedMovies, swipeMovie, undoSwipe, removeMatch, toggleMatchWatched, subscribeToMatches, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -432,12 +432,35 @@ const SwipeScreen = () => {
       const swipedIds = await getUserSwipes(user.uid);
       const unswiped = fetchedMovies.filter(m => !swipedIds.includes(m.id));
       
-      if (unswiped.length === 0 && fetchedMovies.length > 0) {
+      let finalMovies = [...unswiped];
+
+      // Mix in partner likes if available (80-20 ratio)
+      if (profile?.partnerId) {
+        const partnerLikes = await getPartnerLikedMovies(profile.partnerId, user.uid);
+        if (partnerLikes.length > 0) {
+          const mixed: Movie[] = [];
+          let pIdx = 0;
+          for (let i = 0; i < unswiped.length; i++) {
+            mixed.push(unswiped[i]);
+            // Every 4th movie shown will be a partner like (if available)
+            if ((i + 1) % 4 === 0 && pIdx < partnerLikes.length) {
+              mixed.push(partnerLikes[pIdx++]);
+            }
+          }
+          // If any partner likes left, add at the end
+          while(pIdx < partnerLikes.length) {
+            mixed.push(partnerLikes[pIdx++]);
+          }
+          finalMovies = mixed;
+        }
+      }
+
+      if (finalMovies.length === 0 && fetchedMovies.length > 0) {
         setPage(targetPage + 1);
         await loadMoreMovies(targetPage + 1, yr, gr);
         return;
       }
-      setMovies(unswiped);
+      setMovies(finalMovies);
       setCurrentIndex(0);
     } else {
       setMovies(fetchedMovies);
