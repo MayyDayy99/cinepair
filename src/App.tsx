@@ -843,7 +843,7 @@ const WatchlistScreen = () => {
                 <div className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-white/20 border border-white/5"><Film size={48} /></div>
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold font-headline uppercase tracking-tight">Még nincs közös listád</h3>
-                  <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">Kezdj el húzogatni, és ha a párod is kedveli ugyanazt a filmet, itt fog megjelenni!</p>
+                  <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">Kezdj el válogatni, és ha a párod is kedveli ugyanazt a filmet, itt fog megjelenni!</p>
                 </div>
                 <Link to="/" className="text-primary font-headline font-black uppercase tracking-widest text-xs hover:underline underline-offset-8">Vissza a válogatáshoz</Link>
               </div>
