@@ -56,23 +56,77 @@ const Navbar = () => {
 
 const BottomNav = () => {
   const location = useLocation();
-  const isActive = (path: string) => location.pathname === path;
+  const tabs = [
+    { path: '/', icon: Layers, label: 'Felfedezés' },
+    { path: '/watchlist', icon: Heart, label: 'Találatok' },
+    { path: '/profile', icon: UserIcon, label: 'Saját' },
+  ];
 
   return (
-    <footer className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[80%] z-50 flex justify-around items-center px-4 py-2.5 bg-white/5 backdrop-blur-2xl rounded-full border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
-      <Link to="/" className={`relative flex flex-col items-center justify-center p-3 rounded-full transition-all duration-300 ${isActive('/') ? 'text-primary scale-110' : 'text-on-surface/40 hover:text-on-surface'}`}>
-        <Layers size={22} fill={isActive('/') ? 'currentColor' : 'none'} />
-        {isActive('/') && <motion.div layoutId="nav-glow" className="absolute inset-0 bg-primary/10 rounded-full blur-md" />}
-      </Link>
-      <Link to="/watchlist" className={`relative flex flex-col items-center justify-center p-3 rounded-full transition-all duration-300 ${isActive('/watchlist') ? 'text-primary scale-110' : 'text-on-surface/40 hover:text-on-surface'}`}>
-        <Heart size={22} fill={isActive('/watchlist') ? 'currentColor' : 'none'} />
-        {isActive('/watchlist') && <motion.div layoutId="nav-glow" className="absolute inset-0 bg-primary/10 rounded-full blur-md" />}
-      </Link>
-      <Link to="/profile" className={`relative flex flex-col items-center justify-center p-3 rounded-full transition-all duration-300 ${isActive('/profile') ? 'text-primary scale-110' : 'text-on-surface/40 hover:text-on-surface'}`}>
-        <UserIcon size={22} fill={isActive('/profile') ? 'currentColor' : 'none'} />
-        {isActive('/profile') && <motion.div layoutId="nav-glow" className="absolute inset-0 bg-primary/10 rounded-full blur-md" />}
-      </Link>
-    </footer>
+    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50">
+      <div className="bg-[#1a1a1a]/80 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-2 flex items-center justify-between relative shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)]">
+        {/* Subtle inner glow */}
+        <div className="absolute inset-x-8 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        
+        {tabs.map((tab) => {
+          const active = location.pathname === tab.path;
+          const Icon = tab.icon;
+          
+          return (
+            <Link 
+              key={tab.path} 
+              to={tab.path} 
+              className="relative flex-1 py-1.5 flex flex-col items-center justify-center group"
+            >
+              {active && (
+                <motion.div
+                  layoutId="nav-pill"
+                  className="absolute inset-0 bg-primary rounded-full shadow-[0_0_25px_rgba(245,197,24,0.25)]"
+                  transition={{ type: "spring", bounce: 0.25, duration: 0.6 }}
+                />
+              )}
+              
+              <div className={`relative z-10 flex flex-col items-center transition-all duration-500 ${active ? 'text-black translate-y-0' : 'text-white/40 group-hover:text-white/70'}`}>
+                <motion.div
+                  animate={{ 
+                    scale: active ? 1 : 0.9,
+                    y: active ? -1 : 0
+                  }}
+                  transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                >
+                  <Icon 
+                    size={20} 
+                    strokeWidth={active ? 3 : 2} 
+                    fill={active ? "currentColor" : "none"} 
+                    className="transition-all duration-300"
+                  />
+                </motion.div>
+                
+                <AnimatePresence mode="wait">
+                  {active && (
+                    <motion.span
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 3 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-[9px] font-black uppercase tracking-[0.15em] mt-1 leading-none"
+                    >
+                      {tab.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+                
+                {!active && (
+                  <span className="text-[9px] font-bold uppercase tracking-[0.1em] mt-1 opacity-0 group-hover:opacity-40 transition-opacity duration-300">
+                    {tab.label}
+                  </span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 };
 
@@ -350,19 +404,19 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
         style={{ opacity: likeOpacity }}
         className="absolute top-8 left-8 z-50 border-4 border-secondary text-secondary font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl rotate-[-15deg] uppercase tracking-tighter"
       >
-        LIKE
+        TETSZIK
       </motion.div>
       <motion.div 
         style={{ opacity: nopeOpacity }}
         className="absolute top-8 right-8 z-50 border-4 border-error text-error font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl rotate-[15deg] uppercase tracking-tighter"
       >
-        NOPE
+        NEM
       </motion.div>
       <motion.div 
         style={{ opacity: infoOpacity }}
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 border-4 border-primary text-primary font-headline font-black text-3xl sm:text-5xl px-4 py-2 rounded-2xl uppercase tracking-tighter whitespace-nowrap"
       >
-        INFO
+        ADATOK
       </motion.div>
 
       <img 
@@ -901,6 +955,8 @@ const WatchlistScreen = () => {
       </AnimatePresence>
     </div>
   );
+};
+
 const MovieDetailScreen = () => {
   const navigate = useNavigate();
   const { id } = useParams();
