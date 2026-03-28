@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, signInAsGuest, logout } from './firebase';
@@ -691,18 +691,30 @@ const SwipeScreen = () => {
 };
 
 const WatchlistScreen = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [matches, setMatches] = useState<any[]>([]);
   const [moviesData, setMoviesData] = useState<Record<string, Movie>>({});
   const [loading, setLoading] = useState(true);
   const [rouletteWinner, setRouletteWinner] = useState<Movie | null>(null);
+  const [showPartnerLikes, setShowPartnerLikes] = useState(false);
+  const [partnerLikedMovies, setPartnerLikedMovies] = useState<Movie[]>([]);
+  const [loadingPartnerLikes, setLoadingPartnerLikes] = useState(false);
+
+  useEffect(() => {
+    if (showPartnerLikes && user && profile?.partnerId) {
+      setLoadingPartnerLikes(true);
+      getPartnerLikedMovies(profile.partnerId, user.uid).then(movies => {
+        setPartnerLikedMovies(movies);
+        setLoadingPartnerLikes(false);
+      });
+    }
+  }, [showPartnerLikes, user, profile?.partnerId]);
 
   useEffect(() => {
     if (user) {
       setLoading(true);
       const unsub = subscribeToMatches(user.uid, async (newMatches) => {
-        // Sort: newest first
         const sorted = [...newMatches].sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
         setMatches(sorted);
         
@@ -735,18 +747,14 @@ const WatchlistScreen = () => {
       toast.error('Nincs több megnézetlen matchetek!', { icon: '🍿' });
       return;
     }
-    
-    // Pick winner
     const winnerMatch = unwatched[Math.floor(Math.random() * unwatched.length)];
     const winnerMovie = moviesData[winnerMatch.movieId];
-    
     if (winnerMovie) {
       navigator.vibrate?.([100, 50, 100]);
       setRouletteWinner(winnerMovie);
     }
   };
 
-  // Sort matches for display: unwatched first, then watched
   const displayMatches = [...matches].sort((a, b) => {
     if (a.watched === b.watched) return 0;
     return a.watched ? 1 : -1;
@@ -763,139 +771,136 @@ const WatchlistScreen = () => {
 
   return (
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
-      <div className="mb-8 flex items-end justify-between">
-        <div>
-          <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Közös gyűjtemény</p>
-          <h1 className="text-4xl font-black font-headline tracking-tight uppercase">Watchlist</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <motion.button 
-            whileTap={{ scale: 0.9 }}
-            onClick={handleRoulette}
-            className="w-12 h-12 bg-primary text-black rounded-full flex items-center justify-center shadow-lg shadow-primary/20"
-            title="Sorsolás"
-          >
-            <Shuffle size={20} />
-          </motion.button>
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full h-10 flex items-center">
-            <p className="text-xs font-bold text-white/60">
-              <span className="text-primary">{matches.length}</span>
-            </p>
+      <div className="mb-6 flex flex-col gap-4">
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Közös gyűjtemény</p>
+            <h1 className="text-4xl font-black font-headline tracking-tight uppercase">Watchlist</h1>
           </div>
+          <div className="flex items-center gap-3">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={handleRoulette}
+              className="w-10 h-10 sm:w-12 sm:h-12 bg-primary text-black rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
+              <Shuffle size={18} />
+            </motion.button>
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full h-10 flex items-center">
+              <p className="text-xs font-bold text-white/60"><span className="text-primary">{matches.length}</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex p-1 bg-white/5 rounded-2xl border border-white/5">
+          <button onClick={() => setShowPartnerLikes(false)}
+            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${!showPartnerLikes ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}>
+            <Heart size={14} fill={!showPartnerLikes ? "currentColor" : "none"} /> MATCH-EK
+          </button>
+          <button onClick={() => { if (!profile?.partnerId) { toast.error('Csak partnerrel érhető el!'); return; } setShowPartnerLikes(true); }}
+            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'}`}>
+            <Sparkles size={14} fill={showPartnerLikes ? "currentColor" : "none"} /> PÁROM KEDVENCEI
+          </button>
         </div>
       </div>
 
-      <AnimatePresence>
-        {rouletteWinner && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 text-center"
-          >
-            <p className="text-primary font-headline font-black uppercase tracking-[0.4em] text-xs mb-8">Az sors választott:</p>
-            <motion.div 
-              initial={{ scale: 0.8, rotateY: 180 }} animate={{ scale: 1, rotateY: 0 }}
-              className="relative w-full max-w-[280px] aspect-[2/3] rounded-[2rem] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.8)] border-2 border-primary/30 mb-12"
-            >
-              <img src={rouletteWinner.posterUrl} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
-              <div className="absolute bottom-0 p-8 text-left">
-                <h2 className="font-headline font-black text-3xl text-white uppercase leading-none">{rouletteWinner.title}</h2>
+      <AnimatePresence mode="wait">
+        {showPartnerLikes ? (
+          <motion.div key="partner-likes" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+            {loadingPartnerLikes ? (
+              <div className="py-20 flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] font-bold text-secondary/60 uppercase tracking-widest leading-none">Scanneljük a párod szívét</p>
               </div>
-            </motion.div>
-            <div className="w-full max-w-xs flex flex-col gap-4">
-              <button 
-                onClick={() => { navigate(`/movie/${rouletteWinner.id}`); setRouletteWinner(null); }}
-                className="w-full bg-primary text-black font-headline font-black py-5 rounded-2xl uppercase tracking-tight shadow-2xl shadow-primary/20"
-              >
-                Ezt nézzük meg!
-              </button>
-              <button 
-                onClick={() => setRouletteWinner(null)}
-                className="w-full bg-white/5 text-white/60 font-bold py-5 rounded-2xl uppercase tracking-widest text-[10px]"
-              >
-                Vissza
-              </button>
-            </div>
+            ) : partnerLikedMovies.length === 0 ? (
+              <div className="py-20 text-center space-y-4">
+                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20"><Sparkles size={32} /></div>
+                <p className="text-white/40 text-sm max-w-[200px] mx-auto italic font-serif">Minden kedvencét láttad már. Igazi harmónia!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {partnerLikedMovies.map((movie, idx) => (
+                  <motion.div key={movie.id} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: idx * 0.05 }}
+                    className="group relative aspect-[2/3] rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
+                    <img src={movie.posterUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" referrerPolicy="no-referrer" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
+                    <div className="absolute top-3 right-3">
+                      <button onClick={async (e) => { e.preventDefault(); await swipeMovie(user!.uid, movie.id, 'like', profile?.partnerId); toast.success('Lopva hozzáadva a listához! 😉', { icon: '❤️' }); setPartnerLikedMovies(prev => prev.filter(m => m.id !== movie.id)); }}
+                        className="w-10 h-10 bg-secondary/80 backdrop-blur-xl text-black rounded-full flex items-center justify-center active:scale-90 transition-transform shadow-xl">
+                        <Heart size={20} fill="currentColor" />
+                      </button>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      <p className="text-[9px] font-black text-secondary uppercase tracking-[0.2em] mb-1">Párod lájkolta</p>
+                      <h3 className="text-sm font-black text-white uppercase line-clamp-2">{movie.title}</h3>
+                    </div>
+                    <Link to={`/movie/${movie.id}`} className="absolute inset-0 z-0" />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div key="matches" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
+            {matches.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+                <div className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-white/20 border border-white/5"><Film size={48} /></div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold font-headline uppercase tracking-tight">Még nincs közös listád</h3>
+                  <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">Kezdj el húzogatni, és ha a párod is kedveli ugyanazt a filmet, itt fog megjelenni!</p>
+                </div>
+                <Link to="/" className="text-primary font-headline font-black uppercase tracking-widest text-xs hover:underline underline-offset-8">Vissza a válogatáshoz</Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {displayMatches.map((match, index) => {
+                  const movie = moviesData[match.movieId];
+                  if (!movie) return null;
+                  return (
+                    <motion.div key={match.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+                      className={`group relative aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/5 transition-all duration-500 ${match.watched ? 'opacity-40 grayscale-[0.5]' : ''}`}>
+                      <img src={movie.posterUrl} alt={movie.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
+                      <div className="absolute top-3 right-3 flex flex-col gap-2">
+                        <div className={`p-1.5 rounded-full shadow-lg ${match.watched ? 'bg-white/10 text-white/40' : 'bg-primary text-black'}`}><Heart size={14} fill="currentColor" /></div>
+                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMatchWatched(match.id, !match.watched); }}
+                          title={match.watched ? "Mégse láttuk" : "Láttuk"} className={`p-1.5 rounded-full shadow-lg transition-colors ${match.watched ? 'bg-primary text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                          {match.watched ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-black text-primary uppercase tracking-widest">{movie.year}</span>
+                          <span className="w-1 h-1 bg-white/30 rounded-full" />
+                          <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{movie.duration}</span>
+                        </div>
+                        <h3 className="text-sm font-black font-headline text-white uppercase tracking-tight leading-tight line-clamp-2">{movie.title}</h3>
+                        {match.watched && <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mt-2">MEGNÉZVE</p>}
+                      </div>
+                      <Link to={`/movie/${movie.id}`} className="absolute inset-0 z-0" />
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {matches.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-          <div className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-white/20 border border-white/5">
-            <Film size={48} />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-bold font-headline uppercase tracking-tight">Még nincs közös listád</h3>
-            <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">
-              Kezdj el húzogatni, és ha a párod is kedveli ugyanazt a filmet, itt fog megjelenni!
-            </p>
-          </div>
-          <Link to="/" className="text-primary font-headline font-black uppercase tracking-widest text-xs hover:underline underline-offset-8">
-            Vissza a válogatáshoz
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {displayMatches.map((match, index) => {
-            const movie = moviesData[match.movieId];
-            if (!movie) return null;
-            return (
-              <motion.div
-                key={match.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className={`group relative aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/5 transition-all duration-500 ${match.watched ? 'opacity-40 grayscale-[0.5]' : ''}`}
-              >
-                <img 
-                  src={movie.posterUrl} 
-                  alt={movie.title} 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
-                
-                <div className="absolute top-3 right-3 flex flex-col gap-2">
-                  <div className={`p-1.5 rounded-full shadow-lg ${match.watched ? 'bg-white/10 text-white/40' : 'bg-primary text-black'}`}>
-                    <Heart size={14} fill="currentColor" />
-                  </div>
-                  <button 
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMatchWatched(match.id, !match.watched); }}
-                    title={match.watched ? "Mégse láttuk" : "Láttuk"}
-                    className={`p-1.5 rounded-full shadow-lg transition-colors ${match.watched ? 'bg-primary text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                  >
-                    {match.watched ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-black text-primary uppercase tracking-widest">{movie.year}</span>
-                    <span className="w-1 h-1 bg-white/30 rounded-full" />
-                    <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{movie.duration}</span>
-                  </div>
-                  <h3 className="text-sm font-black font-headline text-white uppercase tracking-tight leading-tight line-clamp-2">
-                    {movie.title}
-                  </h3>
-                  {match.watched && (
-                    <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mt-2">MEGNÉZVE</p>
-                  )}
-                </div>
-
-                <Link 
-                  to={`/movie/${movie.id}`}
-                  className="absolute inset-0 z-0"
-                />
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+      <AnimatePresence>
+        {rouletteWinner && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 text-center">
+            <p className="text-primary font-headline font-black uppercase tracking-[0.4em] text-xs mb-8">Az sors választott:</p>
+            <motion.div initial={{ scale: 0.8, rotateY: 180 }} animate={{ scale: 1, rotateY: 0 }} className="relative w-full max-w-[280px] aspect-[2/3] rounded-[2rem] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.8)] border-2 border-primary/30 mb-12">
+              <img src={rouletteWinner.posterUrl} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+              <div className="absolute bottom-0 p-8 text-left"><h2 className="font-headline font-black text-3xl text-white uppercase leading-none">{rouletteWinner.title}</h2></div>
+            </motion.div>
+            <div className="w-full max-w-xs flex flex-col gap-4">
+              <button onClick={() => { navigate(`/movie/${rouletteWinner.id}`); setRouletteWinner(null); }} className="w-full bg-primary text-black font-headline font-black py-5 rounded-2xl uppercase tracking-tight shadow-2xl shadow-primary/20">Ezt nézzük meg!</button>
+              <button onClick={() => setRouletteWinner(null)} className="w-full bg-white/5 text-white/60 font-bold py-5 rounded-2xl uppercase tracking-widest text-[10px]">Vissza</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-};
-
 const MovieDetailScreen = () => {
   const navigate = useNavigate();
   const { id } = useParams();
