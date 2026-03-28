@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
 import { getMovies, getUserSwipes, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
+import QRCode from 'react-qr-code';
 
 // --- Components ---
 
@@ -63,6 +64,7 @@ const BottomNav = () => {
 
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -75,55 +77,109 @@ const LoginScreen = () => {
     }
   };
 
+  const shareUrl = "https://mayydayy99.github.io/cinepair/";
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-background relative overflow-hidden">
-      <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/80 to-background z-10" />
-        <img src="https://picsum.photos/seed/cinema/1920/1080?blur=10" className="w-full h-full object-cover scale-110 animate-pulse duration-[10s]" referrerPolicy="no-referrer" />
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0a] relative overflow-hidden font-sans">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-red-600/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse" style={{ animationDuration: '4s' }} />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-orange-500/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
+        <motion.div 
+          animate={{ rotate: 360 }} 
+          transition={{ duration: 120, repeat: Infinity, ease: "linear" }} 
+          className="absolute -top-64 -right-64 text-red-600/5"
+        >
+          <Film size={800} strokeWidth={0.5} />
+        </motion.div>
+        
+        <motion.div 
+          animate={{ y: [0, -20, 0], rotate: [0, 5, -5, 0] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-10 -right-10 text-orange-500/20 opacity-40"
+        >
+          <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M4 8l2 14h12l2-14H4zm11 12H9l-1-10h8l-1 10zM12 2C10.5 2 9.5 3 9.5 4c0 .5.2 1 .5 1.5C9.2 5.5 8 6.2 8 7.5 8 8.8 9.2 10 10.5 10h3c1.3 0 2.5-1.2 2.5-2.5 0-1.3-1.2-2-2-2 .3-.5.5-1 .5-1.5C14.5 3 13.5 2 12 2z"/>
+          </svg>
+        </motion.div>
       </div>
       
-      <div className="relative z-20 text-center space-y-12 max-w-md">
+      <div className="relative z-20 text-center space-y-8 w-full max-w-sm">
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8 }}
-          className="flex flex-col items-center"
+          className="flex flex-col items-center bg-black/60 p-8 rounded-[3rem] border border-orange-500/20 backdrop-blur-xl shadow-2xl shadow-red-900/40"
         >
-          <h1 className="text-7xl font-black tracking-[-0.08em] text-gradient font-headline uppercase leading-none">
+          <h1 className="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-[#f5c518] to-[#e50914] font-headline uppercase leading-[1.1] drop-shadow-[0_4px_20px_rgba(229,9,20,0.5)]">
             CINEPAIR
           </h1>
-          <div className="h-1 w-24 bg-primary mt-4 rounded-full" />
+          <div className="h-1.5 w-24 bg-gradient-to-r from-[#f5c518] to-[#e50914] rounded-full my-6 opacity-80" />
+          
+          <AnimatePresence mode="popLayout" initial={false}>
+            {!showQr ? (
+              <motion.div
+                key="login"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3 }}
+                className="w-full flex flex-col items-center space-y-6"
+              >
+                <div className="space-y-4 pt-2">
+                  <h2 className="text-xl font-serif italic text-white/90">A te vörös szőnyeged.</h2>
+                  <p className="text-white/60 text-sm leading-relaxed px-2">
+                    Készítsd be a popcornt! Találd meg a pároddal azt a filmet, amit mindketten megnéznétek.
+                  </p>
+                </div>
+
+                <div className="w-full space-y-4 pt-4">
+                  <button 
+                    onClick={handleLogin}
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-[#e50914] to-[#b81d24] text-white font-headline font-black py-4 rounded-2xl shadow-lg shadow-red-900/50 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase tracking-wide group"
+                  >
+                    <LogIn size={22} className="group-hover:translate-x-1 transition-transform" />
+                    {loading ? 'Belépés...' : 'Belépés Google-lel'}
+                  </button>
+                  
+                  <button 
+                    onClick={() => setShowQr(true)}
+                    className="w-full bg-[#1a1a1a] border border-[#f5c518]/30 text-[#f5c518] font-headline font-bold py-4 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
+                  >
+                    Meghívó (QR Kód)
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="qr"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3 }}
+                className="w-full flex flex-col items-center space-y-6"
+              >
+                <h3 className="text-sm font-bold text-[#f5c518] uppercase tracking-widest">Hívd meg a párod</h3>
+                <div className="bg-white p-4 rounded-3xl shadow-2xl">
+                  <QRCode value={shareUrl} size={180} fgColor="#000" bgColor="#fff" />
+                </div>
+                <p className="text-xs text-white/50 px-4 leading-relaxed">
+                  Olvasd be a kamerával a másik telefonról, hogy ő is csatlakozhasson azonnal!
+                </p>
+                <button 
+                  onClick={() => setShowQr(false)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 text-white font-headline font-bold py-3 rounded-2xl hover:bg-[#2a2a2a] transition-colors uppercase tracking-widest text-xs mt-4"
+                >
+                  Vissza a belépéshez
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="space-y-4"
-        >
-          <h2 className="text-2xl font-serif italic text-on-surface">A tökéletes közös moziélmény.</h2>
-          <p className="text-on-surface-variant text-base font-medium leading-relaxed opacity-80">
-            Találd meg a pároddal azt a filmet, amit mindketten szívesen megnéznétek. Nincs több vita, csak tiszta szórakozás.
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-        >
-          <button 
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full bg-primary text-black font-headline font-black py-5 rounded-2xl shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase tracking-tight group"
-          >
-            <LogIn size={24} className="group-hover:translate-x-1 transition-transform" />
-            {loading ? 'Belépés...' : 'Belépés Google-lel'}
-          </button>
-          <p className="mt-6 text-[10px] uppercase tracking-widest text-on-surface-variant opacity-40">
-            By continuing, you agree to our terms of cinematic service
-          </p>
-        </motion.div>
+        <p className="text-[10px] uppercase tracking-[0.3em] text-white/30 font-bold">
+          © {new Date().getFullYear()} CINEPAIR CINEMAS
+        </p>
       </div>
     </div>
   );
@@ -687,6 +743,7 @@ const ProfileScreen = () => {
   const { profile, user, setPartnerId } = useAuth();
   const [partnerIdInput, setPartnerIdInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     if (profile?.partnerId) {
@@ -698,6 +755,8 @@ const ProfileScreen = () => {
     await setPartnerId(partnerIdInput);
     setIsEditing(false);
   };
+  
+  const myPartnerUrl = `https://mayydayy99.github.io/cinepair/#/?partner=${user?.uid || ''}`;
 
   return (
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
@@ -768,8 +827,32 @@ const ProfileScreen = () => {
               </div>
             )}
 
-            <div className="pt-4 border-t border-white/5">
-              <p className="text-[10px] text-on-surface-variant opacity-40 uppercase tracking-widest text-center">
+            <div className="pt-4 border-t border-white/5 space-y-4">
+              <button 
+                onClick={() => setShowQr(!showQr)} 
+                className="w-full bg-[#1a1a1a] border border-secondary/30 text-secondary font-headline font-bold py-3 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
+              >
+                Közös link QR mutatása
+              </button>
+              <AnimatePresence>
+                {showQr && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }} 
+                    animate={{ height: 'auto', opacity: 1 }} 
+                    exit={{ height: 0, opacity: 0 }} 
+                    className="overflow-hidden flex flex-col items-center pt-2 space-y-3"
+                  >
+                    <div className="bg-white p-3 rounded-2xl shadow-xl">
+                      <QRCode value={myPartnerUrl} size={150} fgColor="#000" bgColor="#fff" />
+                    </div>
+                    <p className="text-[10px] text-white/50 text-center uppercase tracking-widest px-4 line-clamp-2">
+                      Olvasd be a kamerával a másik telefonon a gyors csatlakozáshoz!
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <p className="text-[10px] text-on-surface-variant opacity-40 uppercase tracking-widest text-center pt-2">
                 A Te azonosítód: <span className="text-white/60 font-mono select-all">{user?.uid}</span>
               </p>
             </div>
@@ -791,12 +874,37 @@ const ProfileScreen = () => {
   );
 };
 
-// --- Main App ---
-
 const AppContent = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, setPartnerId } = useAuth();
   const location = useLocation();
   const isMovieDetail = location.pathname.startsWith('/movie/');
+
+  useEffect(() => {
+    let partnerId = null;
+    if (location.search) {
+      const params = new URLSearchParams(location.search);
+      partnerId = params.get('partner');
+    }
+    if (!partnerId && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const params = new URLSearchParams(hashQuery);
+      partnerId = params.get('partner');
+    }
+
+    if (user && partnerId) {
+      setPartnerId(partnerId).then(() => {
+        const url = new URL(window.location.href);
+        if (url.hash.includes('?')) {
+          const parts = url.hash.split('?');
+          const params = new URLSearchParams(parts[1]);
+          params.delete('partner');
+          const newParams = params.toString();
+          const newHash = parts[0] + (newParams ? '?' + newParams : '');
+          window.history.replaceState({}, '', url.pathname + url.search + newHash);
+        }
+      });
+    }
+  }, [user, location, setPartnerId]);
 
   if (loading) {
     return (
