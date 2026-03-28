@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, signInAsGuest, logout } from './firebase';
@@ -81,6 +81,38 @@ const BottomNav = () => {
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsInstalled(true);
+    }
+
+    // Modern Android/Chrome prompt
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    // iOS detection
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(ios);
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const handleLogin = async () => {
     setLoading(true);
@@ -160,6 +192,19 @@ const LoginScreen = () => {
                 </div>
 
                 <div className="w-full space-y-4 pt-4">
+                  {/* PWA Install Button */}
+                  {!isInstalled && (deferredPrompt || isIOS) && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      onClick={isIOS ? () => toast('Kattints a Megosztás gombra, majd az "Adás a főképernyőhöz" opcióra! 📱', { icon: '💡' }) : handleInstallClick}
+                      className="w-full bg-primary/10 border border-primary/20 text-primary font-headline font-black py-4 rounded-2xl flex items-center justify-center gap-3 uppercase tracking-widest text-[10px] animate-pulse"
+                    >
+                      <Smartphone size={18} />
+                      {isIOS ? 'App telepítése (iOS)' : 'Alkalmazás telepítése'}
+                    </motion.button>
+                  )}
+
                   <button 
                     onClick={handleLogin}
                     disabled={loading}
