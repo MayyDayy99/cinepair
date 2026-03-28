@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "pr.nemes@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Data Validation
+    // ===============================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('partnerId' in data) || (data.partnerId is string));
+    }
+
+    function isValidSwipe(data) {
+      return data.keys().hasAll(['userId', 'movieId', 'type', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.movieId is string &&
+             data.type in ['like', 'dislike'] &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidMatch(data) {
+      return data.keys().hasAll(['movieId', 'userIds', 'timestamp']) &&
+             data.movieId is string &&
+             data.userIds is list &&
+             data.userIds.size() == 2 &&
+             request.auth.uid in data.userIds &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+    
+    match /movies/{movieId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /users/{userId}/swipes/{swipeId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.partnerId == userId);
+      allow create: if isOwner(userId) && isValidSwipe(request.resource.data);
+      allow update, delete: if isOwner(userId);
+    }
+
+    match /matches/{matchId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.userIds;
+      allow create: if isAuthenticated() && isValidMatch(request.resource.data);
+      allow update, delete: if isAuthenticated() && request.auth.uid in resource.data.userIds;
+    }
+  }
+}

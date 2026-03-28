@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Manrope", sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-body: "Inter", sans-serif;
+  --font-label: "Inter", sans-serif;
+
+  --color-background: #0a0a0a;
+  --color-primary: #f5c518;
+  --color-primary-container: #f5c518;
+  --color-on-primary-container: #000000;
+  --color-secondary: #00ff88;
+  --color-secondary-container: #00ff88;
+  --color-on-secondary-container: #000000;
+  --color-surface: #121212;
+  --color-surface-container-low: #1a1a1a;
+  --color-surface-container-high: #252525;
+  --color-surface-container-highest: #333333;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #a0a0a0;
+  --color-outline-variant: #404040;
+  --color-error: #ff4d4d;
+  --color-error-container: #ff4d4d;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body overflow-hidden;
+    background-image: 
+      radial-gradient(circle at 50% -20%, #f5c51815 0%, transparent 50%),
+      radial-gradient(circle at 0% 100%, #00ff8808 0%, transparent 40%);
+  }
+}
+
+.bg-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.poster-gradient {
+  background: linear-gradient(to top, 
+    rgba(10, 10, 10, 1) 0%, 
+    rgba(10, 10, 10, 0.9) 15%, 
+    rgba(10, 10, 10, 0.4) 40%, 
+    transparent 70%
+  );
+}
+
+.card-shadow {
+  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.8);
+}
+
+.active-nav-glow {
+  box-shadow: 0 0 30px rgba(245, 197, 24, 0.15);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.text-gradient {
+  background: linear-gradient(to right, #f5c518, #ffe5a0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

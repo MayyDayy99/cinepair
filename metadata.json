@@ -1,0 +1,5 @@
+{
+  "name": "CinePair",
+  "description": "A Tinder-style movie discovery app to find the perfect movie to watch with your partner. Swipe through IMDb favorites and build a shared watchlist.",
+  "requestFramePermissions": []
+}
