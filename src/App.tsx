@@ -29,29 +29,22 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="absolute top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm pointer-events-none">
-      <div className="w-10 flex items-center justify-start pointer-events-auto">
+    <nav className="absolute top-0 left-0 w-full z-[60] flex justify-between items-center px-4 py-2 bg-background/80 backdrop-blur-md pointer-events-none">
+      <div className="w-8 flex items-center justify-start pointer-events-auto">
         {profile?.photoURL && (
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/30 shadow-lg shadow-primary/5"
-          >
-            <img src={profile.photoURL} alt="User avatar" referrerPolicy="no-referrer" />
-          </motion.div>
+          <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30">
+            <img src={profile.photoURL} alt="Avatar" referrerPolicy="no-referrer" />
+          </div>
         )}
       </div>
-      <Link to="/" className="flex flex-col items-center pointer-events-auto">
-        <span className="text-2xl font-black tracking-[-0.05em] text-gradient font-headline uppercase leading-none">
+      <Link to="/" className="flex items-center gap-1.5 pointer-events-auto">
+        <span className="text-lg font-black tracking-[-0.03em] text-gradient font-headline uppercase leading-none">
           CINEPAIR
         </span>
-        <span className="text-[8px] font-label uppercase tracking-[0.4em] text-on-surface-variant opacity-60 mt-0.5">
-          Cinematic Match
-        </span>
       </Link>
-      <div className="w-10 flex items-center justify-end pointer-events-auto">
-        <button onClick={toggleFullscreen} className="text-on-surface/40 hover:text-white transition-colors">
-          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+      <div className="w-8 flex items-center justify-end pointer-events-auto">
+        <button onClick={toggleFullscreen} title="Teljes képernyő" className="text-on-surface/40 hover:text-white transition-colors">
+          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
         </button>
       </div>
     </nav>
@@ -63,7 +56,7 @@ const BottomNav = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <footer className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] z-50 flex justify-around items-center px-4 py-3 bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+    <footer className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[80%] z-50 flex justify-around items-center px-4 py-2.5 bg-white/5 backdrop-blur-2xl rounded-full border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
       <Link to="/" className={`relative flex flex-col items-center justify-center p-3 rounded-full transition-all duration-300 ${isActive('/') ? 'text-primary scale-110' : 'text-on-surface/40 hover:text-on-surface'}`}>
         <Layers size={22} fill={isActive('/') ? 'currentColor' : 'none'} />
         {isActive('/') && <motion.div layoutId="nav-glow" className="absolute inset-0 bg-primary/10 rounded-full blur-md" />}
@@ -455,7 +448,7 @@ const SwipeScreen = () => {
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : null;
 
   return (
-    <div className="relative h-full w-full flex flex-col items-center px-4 sm:px-6 pt-16 sm:pt-20 pb-4 overflow-hidden">
+    <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pt-10 pb-2 overflow-hidden">
       <AnimatePresence>
         {showMatch && (
           <motion.div 
@@ -521,34 +514,22 @@ const SwipeScreen = () => {
         )}
       </AnimatePresence>
 
-      <div className="absolute top-16 sm:top-24 z-40 px-4 sm:px-6 w-full flex justify-between items-center pointer-events-none gap-2">
-        <div className="flex gap-2 pointer-events-auto">
-          <select 
-            value={yearFilter}
-            aria-label="Év szűrő"
-            onChange={(e) => setYearFilter(e.target.value)}
-            className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl cursor-pointer focus:outline-none"
-          >
-            <option value="">Összes év</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-            <option value="2023">2023</option>
-            <option value="2022">2022</option>
-            <option value="2021">2021</option>
-            <option value="2020">2020</option>
+      <div className="w-full z-40 px-3 sm:px-6 flex justify-between items-center gap-2 shrink-0 pt-1 pb-1">
+        <div className="flex gap-1.5">
+          <select value={yearFilter} aria-label="Év" onChange={(e) => setYearFilter(e.target.value)}
+            className="bg-black/40 text-white border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl cursor-pointer focus:outline-none">
+            <option value="">Év</option>
+            <option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option>
+            <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
           </select>
-          <select 
-            value={genreFilter}
-            aria-label="Műfaj szűrő"
-            onChange={(e) => setGenreFilter(e.target.value)}
-            className="bg-black/50 text-white border border-white/10 rounded-full px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest backdrop-blur-xl cursor-pointer focus:outline-none"
-          >
-            <option value="">Összes műfaj</option>
+          <select value={genreFilter} aria-label="Műfaj" onChange={(e) => setGenreFilter(e.target.value)}
+            className="bg-black/40 text-white border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl cursor-pointer focus:outline-none">
+            <option value="">Műfaj</option>
             {genres.map(g => <option key={g.id} value={g.id.toString()}>{g.name}</option>)}
           </select>
         </div>
-        <div className="bg-black/50 border border-white/10 px-3 py-1.5 rounded-full backdrop-blur-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest text-primary pointer-events-auto">
-          {currentIndex + 1} / {movies.length}
+        <div className="bg-black/40 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-xl text-[10px] font-bold uppercase tracking-wider text-primary">
+          {currentIndex + 1}/{movies.length}
         </div>
       </div>
 
@@ -574,7 +555,7 @@ const SwipeScreen = () => {
         </AnimatePresence>
       </div>
 
-      <div className="mt-4 sm:mt-8 flex items-center justify-center gap-6 sm:gap-8 shrink-0">
+      <div className="mt-2 sm:mt-4 flex items-center justify-center gap-6 shrink-0">
         <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('dislike')} title="Nem tetszik"
           className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group">
           <X size={28} className="text-error/60 group-hover:text-error transition-all" />
