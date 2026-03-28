@@ -45,23 +45,61 @@ export const MOCK_MOVIES: Movie[] = [
   }
 ];
 
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+async function fetchMoviesFromTMDB(): Promise<Movie[]> {
+  if (!TMDB_API_KEY) {
+    console.error("TMDB API Key missing!");
+    return MOCK_MOVIES;
+  }
+
+  try {
+    const response = await fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&language=hu-HU&page=1`);
+    const data = await response.json();
+    
+    if (!data.results) return MOCK_MOVIES;
+
+    const movies: Movie[] = data.results.slice(0, 15).map((m: any) => ({
+      id: m.id.toString(),
+      title: m.title.toUpperCase(),
+      year: m.release_date ? m.release_date.split('-')[0] : 'N/A',
+      rating: Math.round(m.vote_average * 10) / 10,
+      posterUrl: m.poster_path ? `${TMDB_IMAGE_BASE}${m.poster_path}` : 'https://images.unsplash.com/photo-1542204172-3f19114d5049?q=80&w=1035&auto=format&fit=crop',
+      synopsis: m.overview || 'Nincs elérhető leírás.',
+      genres: ['Film', 'TMDB'],
+      duration: 'N/A'
+    }));
+
+    // Cache to Firestore
+    for (const movie of movies) {
+      await setDoc(doc(db, 'movies', movie.id), movie, { merge: true });
+    }
+
+    return movies;
+  } catch (error) {
+    console.error("TMDB Fetch Error:", error);
+    return MOCK_MOVIES;
+  }
+}
+
 export async function getMovies(): Promise<Movie[]> {
   const path = 'movies';
   try {
     const querySnapshot = await getDocs(collection(db, path));
     const movies = querySnapshot.docs.map(doc => doc.data() as Movie);
-    // If no movies in Firestore, seed with MOCK_MOVIES
-    if (movies.length === 0) {
-      await seedMovies();
-      return MOCK_MOVIES;
+    
+    // If no recent movies in Firestore (or less than 5), refresh from TMDB
+    if (movies.length < 5) {
+      return fetchMoviesFromTMDB();
     }
     return movies;
   } catch (error) {
-    console.warn("Falling back to mock movies due to error:", error);
-    return MOCK_MOVIES;
+    console.warn("Falling back to TMDB directly due to Firestore error:", error);
+    return fetchMoviesFromTMDB();
   }
 }
-
 
 export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerId?: string) {
   const path = `users/${userId}/swipes`;
@@ -75,12 +113,10 @@ export async function swipeMovie(userId: string, movieId: string, type: 'like' |
     });
 
     if (type === 'like' && partnerId) {
-      // Check if partner also liked it
       const partnerSwipeRef = doc(db, `users/${partnerId}/swipes`, movieId);
       const partnerSwipeSnap = await getDoc(partnerSwipeRef);
       
       if (partnerSwipeSnap.exists() && partnerSwipeSnap.data().type === 'like') {
-        // It's a match!
         const matchPath = 'matches';
         const matchRef = doc(collection(db, matchPath), `${userId}_${partnerId}_${movieId}`);
         await setDoc(matchRef, {
@@ -88,7 +124,7 @@ export async function swipeMovie(userId: string, movieId: string, type: 'like' |
           userIds: [userId, partnerId],
           timestamp: serverTimestamp()
         });
-        return true; // Match found
+        return true;
       }
     }
     return false;
