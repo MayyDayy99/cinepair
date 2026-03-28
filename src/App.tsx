@@ -222,9 +222,19 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
   const scale = useTransform(x, [-200, 0, 200], [0.95, 1, 0.95]);
 
   useEffect(() => {
+    const el = document.getElementById('swipe-glow-overlay');
+    if (el) el.style.backgroundColor = 'transparent';
+  }, []);
+
+  useEffect(() => {
     return x.on("change", (latestX) => {
       const el = document.getElementById('swipe-glow-overlay');
       if (el) {
+        if (leaveDirection) {
+          el.style.backgroundColor = 'transparent';
+          return;
+        }
+
         if (latestX > 0) {
           el.style.backgroundColor = `rgba(0, 255, 136, ${Math.min(latestX / 200, 1) * 0.15})`;
         } else if (latestX < 0) {
@@ -234,7 +244,7 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
         }
       }
     });
-  }, [x]);
+  }, [x, leaveDirection]);
 
   const onDragEnd = (_: any, info: any) => {
     if (info.offset.x > 100) {
@@ -462,7 +472,7 @@ const SwipeScreen = () => {
 
   return (
     <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pb-2 overflow-hidden">
-      <div id="swipe-glow-overlay" className="absolute inset-0 z-0 pointer-events-none transition-colors duration-100" />
+      <div id="swipe-glow-overlay" className="absolute inset-0 z-0 pointer-events-none transition-colors duration-300" />
       
       <AnimatePresence>
         {showMatch && (
