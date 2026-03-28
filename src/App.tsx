@@ -5,7 +5,7 @@ import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Shar
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
-import { getMovies, getUserSwipes, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
+import { getMovies, getMovieById, getUserSwipes, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 
 // --- Components ---
@@ -304,24 +304,47 @@ const SwipeScreen = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showMatch, setShowMatch] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [yearFilter, setYearFilter] = useState('');
+
+  const loadMoreMovies = async (targetPage: number, forceYear?: string) => {
+    setLoading(true);
+    const yr = forceYear !== undefined ? forceYear : yearFilter;
+    const fetchedMovies = await getMovies({ page: targetPage, year: yr });
+    
+    if (user) {
+      const swipedIds = await getUserSwipes(user.uid);
+      const unswiped = fetchedMovies.filter(m => !swipedIds.includes(m.id));
+      
+      if (unswiped.length === 0 && fetchedMovies.length > 0) {
+        setPage(targetPage + 1);
+        await loadMoreMovies(targetPage + 1, yr);
+        return;
+      }
+      setMovies(unswiped);
+      setCurrentIndex(0);
+    } else {
+      setMovies(fetchedMovies);
+      setCurrentIndex(0);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const loadMovies = async () => {
-      setLoading(true);
-      const fetchedMovies = await getMovies();
-      
-      if (user) {
-        const swipedIds = await getUserSwipes(user.uid);
-        const unswiped = fetchedMovies.filter(m => !swipedIds.includes(m.id));
-        setMovies(unswiped);
-      } else {
-        setMovies(fetchedMovies);
-      }
-      
-      setLoading(false);
-    };
-    loadMovies();
-  }, [user]);
+    setPage(1);
+    loadMoreMovies(1, yearFilter);
+  }, [user, yearFilter]);
+
+  const processNext = () => {
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= movies.length) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadMoreMovies(nextPage, yearFilter);
+    } else {
+      setCurrentIndex(nextIndex);
+    }
+  };
 
   const handleSwipe = async (type: 'like' | 'dislike') => {
     if (currentIndex >= movies.length) return;
@@ -332,8 +355,13 @@ const SwipeScreen = () => {
     if (isMatch) {
       setShowMatch(movie);
     } else {
-      setCurrentIndex(prev => prev + 1);
+      processNext();
     }
+  };
+
+  const handleMatchContinue = () => {
+    setShowMatch(null);
+    processNext();
   };
 
   if (loading) {
@@ -344,8 +372,8 @@ const SwipeScreen = () => {
           <div className="w-20 h-20 border-4 border-primary border-t-transparent rounded-full animate-spin relative z-10" />
         </div>
         <div className="text-center space-y-2">
-          <p className="text-primary font-headline font-black uppercase tracking-[0.3em] text-xs">Loading Cinema</p>
-          <p className="text-on-surface-variant font-body text-xs opacity-60">Preparing your next match...</p>
+          <p className="text-primary font-headline font-black uppercase tracking-[0.3em] text-xs">Figyeljük a vásznat</p>
+          <p className="text-on-surface-variant font-body text-xs opacity-60">Filmek betöltése...</p>
         </div>
       </div>
     );
@@ -364,12 +392,12 @@ const SwipeScreen = () => {
         <div className="space-y-3 max-w-xs">
           <h2 className="text-3xl font-black font-headline tracking-tight uppercase">Vége a tekercsnek</h2>
           <p className="text-on-surface-variant font-body leading-relaxed opacity-70">
-            Minden filmet megnéztél a jelenlegi kínálatból. Nézz vissza később, vagy böngészd a közös listát!
+            Még nem találtunk több filmet. Próbálj meg beállítani egy másik évet!
           </p>
         </div>
-        <Link to="/watchlist" className="w-full max-w-xs py-5 bg-primary text-black rounded-2xl font-headline font-black uppercase tracking-tight shadow-2xl shadow-primary/20 active:scale-95 transition-transform">
-          Watchlist megtekintése
-        </Link>
+        <button onClick={() => setYearFilter('')} className="w-full max-w-xs py-5 bg-primary text-black rounded-2xl font-headline font-black uppercase tracking-tight shadow-2xl shadow-primary/20 active:scale-95 transition-transform">
+          Összes év mutatása
+        </button>
       </div>
     );
   }
@@ -427,13 +455,13 @@ const SwipeScreen = () => {
 
               <div className="w-full max-w-xs flex flex-col gap-4">
                 <button 
-                  onClick={() => navigate(`/movie/${showMatch.id}`)}
+                  onClick={() => { navigate(`/movie/${showMatch.id}`); handleMatchContinue(); }}
                   className="w-full bg-primary text-black font-headline font-black py-5 rounded-2xl shadow-2xl shadow-primary/20 flex items-center justify-center gap-2 uppercase tracking-tight active:scale-95 transition-transform"
                 >
                   Részletek <PlayCircle size={24} />
                 </button>
                 <button 
-                  onClick={() => { setShowMatch(null); setCurrentIndex(prev => prev + 1); }}
+                  onClick={handleMatchContinue}
                   className="w-full bg-white/5 backdrop-blur-xl border border-white/10 text-white font-headline font-bold py-5 rounded-2xl uppercase tracking-widest text-xs active:scale-95 transition-transform"
                 >
                   Folytatás
@@ -443,6 +471,26 @@ const SwipeScreen = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <div className="absolute top-24 z-40 px-6 w-full flex justify-between items-center pointer-events-none">
+        <select 
+          value={yearFilter}
+          onChange={(e) => setYearFilter(e.target.value)}
+          className="bg-black/50 text-white border border-white/10 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-widest backdrop-blur-xl pointer-events-auto cursor-pointer focus:outline-none"
+        >
+          <option value="">Összes év</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+          <option value="2021">2021</option>
+          <option value="2020">2020</option>
+          <option value="2010">2010</option>
+        </select>
+        <div className="bg-black/50 border border-white/10 px-4 py-2 rounded-full backdrop-blur-xl text-xs font-bold uppercase tracking-widest text-primary pointer-events-auto">
+          {currentIndex + 1} / {movies.length}
+        </div>
+      </div>
 
       <div className="relative w-full max-w-md aspect-[9/16] max-h-[60vh] flex items-center justify-center">
         <AnimatePresence mode="popLayout">
@@ -490,29 +538,39 @@ const SwipeScreen = () => {
 const WatchlistScreen = () => {
   const { user } = useAuth();
   const [matches, setMatches] = useState<any[]>([]);
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const [moviesData, setMoviesData] = useState<Record<string, Movie>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      if (user) {
-        setLoading(true);
-        const fetchedMovies = await getMovies();
-        setMovies(fetchedMovies);
-        const unsub = subscribeToMatches(user.uid, (newMatches) => {
-          setMatches(newMatches);
-          setLoading(false);
-        });
-        return unsub;
-      }
-    };
-    const unsubPromise = loadData();
-    return () => {
-      unsubPromise.then(unsub => unsub && unsub());
-    };
+    if (user) {
+      setLoading(true);
+      const unsub = subscribeToMatches(user.uid, async (newMatches) => {
+        setMatches(newMatches);
+        
+        let changed = false;
+        const newMoviesData = { ...moviesData };
+        
+        for (const match of newMatches) {
+          if (!newMoviesData[match.movieId]) {
+            const data = await getMovieById(match.movieId);
+            if (data) {
+              newMoviesData[match.movieId] = data;
+              changed = true;
+            }
+          }
+        }
+        
+        if (changed) {
+          setMoviesData(prev => ({ ...prev, ...newMoviesData }));
+        }
+        setLoading(false);
+      });
+
+      return () => unsub();
+    }
   }, [user]);
 
-  const matchedMovies = movies.filter(m => matches.some(match => match.movieId === m.id));
+  const matchedMovies = matches.map(match => moviesData[match.movieId]).filter(Boolean) as Movie[];
 
   if (loading) {
     return (

@@ -49,19 +49,32 @@ const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
-async function fetchMoviesFromTMDB(): Promise<Movie[]> {
+export interface MovieFetchOptions {
+  page?: number;
+  year?: string;
+}
+
+export async function getMovies(options: MovieFetchOptions = {}): Promise<Movie[]> {
+  const { page = 1, year } = options;
+
   if (!TMDB_API_KEY) {
     console.error("TMDB API Key missing!");
     return MOCK_MOVIES;
   }
 
   try {
-    const response = await fetch(`${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&language=hu-HU&page=1`);
+    let url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&language=hu-HU&sort_by=popularity.desc&page=${page}&vote_count.gte=100`;
+    
+    if (year) {
+      url += `&primary_release_year=${year}`;
+    }
+
+    const response = await fetch(url);
     const data = await response.json();
     
-    if (!data.results) return MOCK_MOVIES;
+    if (!data.results) return [];
 
-    const movies: Movie[] = data.results.slice(0, 15).map((m: any) => ({
+    const movies: Movie[] = data.results.map((m: any) => ({
       id: m.id.toString(),
       title: m.title.toUpperCase(),
       year: m.release_date ? m.release_date.split('-')[0] : 'N/A',
@@ -72,32 +85,31 @@ async function fetchMoviesFromTMDB(): Promise<Movie[]> {
       duration: 'N/A'
     }));
 
-    // Cache to Firestore
-    for (const movie of movies) {
-      await setDoc(doc(db, 'movies', movie.id), movie, { merge: true });
-    }
-
     return movies;
   } catch (error) {
     console.error("TMDB Fetch Error:", error);
-    return MOCK_MOVIES;
+    return [];
   }
 }
 
-export async function getMovies(): Promise<Movie[]> {
-  const path = 'movies';
+export async function getMovieById(movieId: string): Promise<Movie | null> {
+  if (!TMDB_API_KEY) return null;
   try {
-    const querySnapshot = await getDocs(collection(db, path));
-    const movies = querySnapshot.docs.map(doc => doc.data() as Movie);
-    
-    // If no recent movies in Firestore (or less than 5), refresh from TMDB
-    if (movies.length < 5) {
-      return fetchMoviesFromTMDB();
-    }
-    return movies;
-  } catch (error) {
-    console.warn("Falling back to TMDB directly due to Firestore error:", error);
-    return fetchMoviesFromTMDB();
+    const response = await fetch(`${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    const m = await response.json();
+    if (!m.id) return null;
+    return {
+      id: m.id.toString(),
+      title: m.title.toUpperCase(),
+      year: m.release_date ? m.release_date.split('-')[0] : 'N/A',
+      rating: Math.round(m.vote_average * 10) / 10,
+      posterUrl: m.poster_path ? `${TMDB_IMAGE_BASE}${m.poster_path}` : 'https://images.unsplash.com/photo-1542204172-3f19114d5049?q=80&w=1035&auto=format&fit=crop',
+      synopsis: m.overview || 'Nincs elérhető leírás.',
+      genres: m.genres ? m.genres.map((g: any) => g.name) : ['Film'],
+      duration: m.runtime ? `${Math.floor(m.runtime/60)}h ${m.runtime%60}m` : 'N/A'
+    };
+  } catch(e) {
+    return null;
   }
 }
 
