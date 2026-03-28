@@ -1,20 +1,57 @@
+# 🍿 CinePair — Találd meg a pároddal a tökéletes filmet!
+
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img src="public/icon-512.png" width="128" alt="CinePair Logo" />
+  <p><i>CinePair 2.0 — Prémium moziélmény pároknak, egyenesen a zsebedben.</i></p>
 </div>
 
-# Run and deploy your AI Studio app
+---
 
-This contains everything you need to run your app locally.
+A **CinePair** egy modern, reszponzív PWA (Progressive Web App) alkalmazás, amivel véget vethetsz a "mit nézzünk ma?" vitáknak. Húzzátok el a filmeket, és ha mindkettőtöknek tetszik valami, bumm: **MATCH!**
 
-View your app in AI Studio: https://ai.studio/apps/1effa309-4c4f-4834-a749-66c463aeb51b
+## ✨ Főbb funkciók
 
-## Run Locally
+- **Swipe & Match:** Tinder-szerű filmválasztó interakció.
+- **Valósidejű szinkronizáció:** Azonnali visszajelzés, ha a párod is kedvel egy filmet.
+- **Push Értesítések:** Találat esetén azonnali értesítés a telefonodra.
+- **PWA támogatás:** Telepíthető alkalmazásként, natív érzéssel (nincs böngészőkeret).
+- **Részletes filminfók:** Trailer nézés (YouTube), műfajok, IMDb értékelések és leírások.
+- **Okos szűrők:** Megjelenési év és műfaj szerinti keresés (TMDB adatok alapján).
+- **Hungarizált felület:** Teljesen magyar nyelvű, letisztult UI.
 
-**Prerequisites:**  Node.js
+## 🚀 Technológiai stack
 
+- **Frontend:** React + Vite + TailwindCSS
+- **Adatbázis & Auth:** Firebase (Firestore & Google Auth)
+- **Animációk:** Framer Motion (3D kártyaeffektel)
+- **API:** TMDB (The Movie Database) API
+- **Ikonok:** Lucide React
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠️ Helyi fejlesztés
+
+**Előfeltételek:** Node.js (v18+)
+
+1.  **Telepítés:**
+    ```bash
+    npm install
+    ```
+2.  **Környezeti változók:**
+    Hozd létre a `.env` fájlt az alábbi kulccsal:
+    ```env
+    VITE_TMDB_API_KEY=a_te_tmdb_api_kulcsod
+    ```
+3.  **Futtatás:**
+    ```bash
+    npm run dev
+    ```
+
+## 📱 Használat
+
+1. Lépj be a Google fiókoddal.
+2. Másold ki az azonosítódat a **Profil** menüben.
+3. Küldd el a párodnak, ő pedig írja be a saját profiljánál a "Partner összekötés" mezőbe.
+4. Kezdjetek el swipe-olni a főoldalon!
+
+---
+
+*© 2026 CinePair — Made with ❤️ for couples.*
