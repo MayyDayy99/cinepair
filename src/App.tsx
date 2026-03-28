@@ -5,7 +5,7 @@ import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Shar
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
-import { getMovies, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
+import { getMovies, getUserSwipes, swipeMovie, subscribeToMatches, Movie } from './services/movieService';
 
 // --- Components ---
 
@@ -251,11 +251,19 @@ const SwipeScreen = () => {
     const loadMovies = async () => {
       setLoading(true);
       const fetchedMovies = await getMovies();
-      setMovies(fetchedMovies);
+      
+      if (user) {
+        const swipedIds = await getUserSwipes(user.uid);
+        const unswiped = fetchedMovies.filter(m => !swipedIds.includes(m.id));
+        setMovies(unswiped);
+      } else {
+        setMovies(fetchedMovies);
+      }
+      
       setLoading(false);
     };
     loadMovies();
-  }, []);
+  }, [user]);
 
   const handleSwipe = async (type: 'like' | 'dislike') => {
     if (currentIndex >= movies.length) return;

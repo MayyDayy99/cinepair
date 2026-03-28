@@ -145,6 +145,18 @@ export function subscribeToMatches(userId: string, callback: (matches: any[]) =>
   });
 }
 
+export async function getUserSwipes(userId: string): Promise<string[]> {
+  const path = `users/${userId}/swipes`;
+  try {
+    const querySnapshot = await getDocs(collection(db, path));
+    return querySnapshot.docs.map(doc => doc.id);
+  } catch (error) {
+    console.warn("Could not fetch swipes:", error);
+    return [];
+  }
+}
+
+
 export async function seedMovies() {
   const path = 'movies';
   try {
