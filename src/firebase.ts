@@ -11,6 +11,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+console.log('--- FIREBASE CONFIG DIAGNOSTICS ---');
+console.log('API Key exists:', !!firebaseConfig.apiKey);
+console.log('API Key length:', firebaseConfig.apiKey?.length);
+console.log('API Key first 4 chars:', firebaseConfig.apiKey?.substring(0, 4));
+console.log('Has quotes:', firebaseConfig.apiKey?.includes('"') || firebaseConfig.apiKey?.includes("'"));
+console.log('-----------------------------------');
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DB_ID || '(default)');
 export const auth = getAuth(app);
