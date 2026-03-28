@@ -209,19 +209,22 @@ interface MovieCardProps {
   movie: Movie;
   onSwipe: (type: 'like' | 'dislike') => void | Promise<void>;
   onInfo: () => void | Promise<void>;
+  leaveDirection?: 'left' | 'right' | null;
   key?: any;
 }
 
-const MovieCard = ({ movie, onSwipe, onInfo }: MovieCardProps) => {
+const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) => {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const rotate = useTransform(x, [-200, 200], [-20, 20]);
+  const rotateZ = useTransform(x, [-200, 200], [-15, 15]);
+  const rotateY = useTransform(x, [-200, 200], [-30, 30]); // 3D effect
+  const rotateX = useTransform(y, [-200, 200], [20, -20]); // 3D effect
   const opacity = useTransform(x, [-200, -150, 0, 150, 200], [0, 1, 1, 1, 0]);
   const likeOpacity = useTransform(x, [50, 150], [0, 1]);
   const nopeOpacity = useTransform(x, [-150, -50], [1, 0]);
   const infoOpacity = useTransform(y, [-150, -50], [1, 0]);
-  const scale = useTransform(x, [-200, 0, 200], [0.9, 1, 0.9]);
+  const scale = useTransform(x, [-200, 0, 200], [0.95, 1, 0.95]);
 
   const onDragEnd = (_: any, info: any) => {
     if (info.offset.x > 100) {
@@ -236,21 +239,23 @@ const MovieCard = ({ movie, onSwipe, onInfo }: MovieCardProps) => {
   return (
     <motion.div 
       key={movie.id}
-      style={{ x, y, rotate, opacity, scale }}
+      style={{ x, y, rotateZ, rotateX, rotateY, opacity, scale, perspective: 1000 }}
+      custom={leaveDirection}
       drag
-      dragElastic={0.8}
+      dragElastic={0.9}
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-      whileTap={{ scale: 1.02, cursor: 'grabbing' }}
+      whileTap={{ scale: 1.05, cursor: 'grabbing' }}
       onDragEnd={onDragEnd}
-      initial={{ scale: 0.9, opacity: 0, y: 40 }}
-      animate={{ scale: 1, opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
-      exit={{ 
-        x: x.get() > 100 ? 500 : x.get() < -100 ? -500 : 0, 
-        y: y.get() < -100 ? -500 : 0,
+      initial={{ scale: 0.9, opacity: 0, y: 50, rotateX: 20 }}
+      animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0, transition: { type: "spring", stiffness: 250, damping: 20 } }}
+      exit={(direction: 'left' | 'right' | null) => ({ 
+        x: direction === 'right' ? 500 : direction === 'left' ? -500 : x.get() > 50 ? 500 : x.get() < -50 ? -500 : 0, 
+        y: y.get() < -100 ? -500 : direction ? 100 : 0,
         opacity: 0, 
-        transition: { duration: 0.25, ease: "easeOut" } 
-      }}
-      className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab bg-surface-container-highest border border-white/5 shadow-2xl"
+        rotateZ: direction === 'right' ? 20 : direction === 'left' ? -20 : 0,
+        transition: { duration: 0.3, ease: "circIn" } 
+      })}
+      className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab bg-surface-container-highest border border-white/5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.6)]"
     >
       {!imageLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface">
@@ -326,6 +331,7 @@ const SwipeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [yearFilter, setYearFilter] = useState('');
+  const [leaveDirection, setLeaveDirection] = useState<'left' | 'right' | null>(null);
 
   const loadMoreMovies = async (targetPage: number, forceYear?: string) => {
     setLoading(true);
@@ -369,14 +375,20 @@ const SwipeScreen = () => {
   const handleSwipe = async (type: 'like' | 'dislike') => {
     if (currentIndex >= movies.length) return;
     
-    const movie = movies[currentIndex];
-    const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerId);
+    setLeaveDirection(type === 'like' ? 'right' : 'left'); // Set exit animation custom prop
     
-    if (isMatch) {
-      setShowMatch(movie);
-    } else {
-      processNext();
-    }
+    // Give react time to register the direction before updating index to trigger exit
+    setTimeout(async () => {
+      const movie = movies[currentIndex];
+      const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerId);
+      
+      if (isMatch) {
+        setShowMatch(movie);
+      } else {
+        processNext();
+        setLeaveDirection(null);
+      }
+    }, 10);
   };
 
   const handleMatchContinue = () => {
@@ -513,7 +525,7 @@ const SwipeScreen = () => {
       </div>
 
       <div className="relative w-full max-w-md aspect-[9/16] max-h-[60vh] flex items-center justify-center">
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence mode="popLayout" custom={leaveDirection}>
           {nextMovie && (
             <div 
               key={`next-${nextMovie.id}`}
@@ -527,6 +539,7 @@ const SwipeScreen = () => {
           <MovieCard 
             key={currentMovie.id}
             movie={currentMovie}
+            leaveDirection={leaveDirection}
             onSwipe={handleSwipe}
             onInfo={() => navigate(`/movie/${currentMovie.id}`)}
           />
@@ -1019,9 +1032,9 @@ const AppContent = () => {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-      <div className="w-full sm:w-[414px] sm:h-[896px] sm:max-h-[95vh] bg-background sm:rounded-[2.5rem] sm:border border-white/10 sm:shadow-2xl sm:shadow-red-900/10 overflow-hidden relative flex flex-col">
+      <div className="w-full h-[100dvh] sm:w-[414px] sm:h-[896px] sm:max-h-[95vh] bg-background sm:rounded-[2.5rem] sm:border border-white/10 sm:shadow-2xl sm:shadow-red-900/10 overflow-hidden relative flex flex-col">
         {!isMovieDetail && <Navbar />}
-        <div className="flex-1 overflow-x-hidden overflow-y-auto w-full h-full pb-20 relative">
+        <div className="flex-1 overflow-x-hidden overflow-y-auto w-full h-full pb-28 relative">
           <Routes>
             <Route path="/" element={<SwipeScreen />} />
             <Route path="/watchlist" element={<WatchlistScreen />} />
