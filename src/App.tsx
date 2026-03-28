@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2 } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
 import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, swipeMovie, undoSwipe, removeMatch, subscribeToMatches, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
+import toast, { Toaster } from 'react-hot-toast';
 
 // --- Components ---
 
@@ -925,7 +926,21 @@ const ProfileScreen = () => {
 
         {/* Partner Connection Section */}
         <div className="space-y-4">
-          <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40 ml-4">Partner összekötés</h3>
+          <div className="flex items-center justify-between ml-4">
+            <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Partner összekötés</h3>
+            <button 
+              onClick={() => {
+                if ('Notification' in window) {
+                  Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') toast.success('Értesítések engedélyezve!');
+                  });
+                }
+              }}
+              className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 active:scale-95"
+            >
+              <Bell size={12} /> Értesítések
+            </button>
+          </div>
           <div className="bg-glass rounded-[2rem] p-8 border border-white/5 shadow-2xl space-y-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary border border-secondary/20">
@@ -1039,7 +1054,51 @@ const ProfileScreen = () => {
 const AppContent = () => {
   const { user, loading, setPartnerId } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
+  const [previousMatchCount, setPreviousMatchCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      const unsub = subscribeToMatches(user.uid, async (matches) => {
+        if (previousMatchCount !== null && matches.length > previousMatchCount) {
+          // Find the newest match based on timestamp
+          const newMatch = matches.reduce((prev, current) => 
+            (prev.timestamp?.toMillis() || 0) > (current.timestamp?.toMillis() || 0) ? prev : current
+          );
+          
+          if (newMatch && newMatch.matchedBy && newMatch.matchedBy !== user.uid) {
+            const movie = await getMovieById(newMatch.movieId);
+            if (movie) {
+              // Trigger in-app toast
+              toast.custom((t) => (
+                <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-surface-container-high shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-2xl pointer-events-auto flex items-center border border-primary/20 p-4 gap-4`}>
+                  <div className="h-16 w-12 rounded-lg overflow-hidden shrink-0">
+                    <img src={movie.posterUrl} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[10px] font-black tracking-widest uppercase text-primary mb-1">Új Találat!</p>
+                    <p className="text-sm font-bold text-white line-clamp-1">{movie.title}</p>
+                    <p className="text-xs text-white/50">A párod épp most kedvelte!</p>
+                  </div>
+                  <button onClick={() => { toast.dismiss(t.id); navigate(`/movie/${movie.id}`); }} className="bg-primary text-black px-4 py-2 text-xs font-bold uppercase rounded-full">
+                    Nézem
+                  </button>
+                </div>
+              ), { duration: 5000, position: 'top-center' });
+
+              // Trigger OS notification if allowed
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('Új CinePair Találat! 🍿', { body: `A párod is kedvelte: ${movie.title}`, icon: '/icon-512.png' });
+              }
+            }
+          }
+        }
+        setPreviousMatchCount(matches.length);
+      });
+      return unsub;
+    }
+  }, [user, previousMatchCount, navigate]);
 
   useEffect(() => {
     let partnerId = null;
@@ -1104,6 +1163,7 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <Router>
+          <Toaster />
           <AppContent />
         </Router>
       </AuthProvider>

@@ -190,6 +190,7 @@ export async function swipeMovie(userId: string, movieId: string, type: 'like' |
         await setDoc(matchRef, {
           movieId,
           userIds: [userId, partnerId],
+          matchedBy: userId,
           timestamp: serverTimestamp()
         });
         return true;
