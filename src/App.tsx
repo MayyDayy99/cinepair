@@ -263,18 +263,19 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
       style={{ x, y, rotateZ, rotateX, rotateY, opacity, scale, perspective: 1000 }}
       custom={leaveDirection}
       drag
-      dragElastic={0.9}
+      dragElastic={1}
+      dragMomentum={false}
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
       whileTap={{ scale: 1.05, cursor: 'grabbing' }}
       onDragEnd={onDragEnd}
       initial={{ scale: 0.9, opacity: 0, y: 50, rotateX: 20 }}
-      animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0, transition: { type: "spring", stiffness: 250, damping: 20 } }}
+      animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0, transition: { type: "spring", stiffness: 300, damping: 25 } }}
       exit={(direction: 'left' | 'right' | null) => ({ 
-        x: direction === 'right' ? 500 : direction === 'left' ? -500 : x.get() > 50 ? 500 : x.get() < -50 ? -500 : 0, 
-        y: y.get() < -100 ? -500 : direction ? 100 : 0,
+        x: direction === 'right' ? 800 : direction === 'left' ? -800 : x.get() > 50 ? 800 : x.get() < -50 ? -800 : 0, 
+        y: y.get() < -100 ? -800 : direction ? 100 : 0,
         opacity: 0, 
-        rotateZ: direction === 'right' ? 20 : direction === 'left' ? -20 : 0,
-        transition: { duration: 0.3, ease: "circIn" } 
+        rotateZ: direction === 'right' ? 45 : direction === 'left' ? -45 : 0,
+        transition: { duration: 0.2, ease: "easeIn" } 
       })}
       className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab bg-surface-container-highest border border-white/5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.6)]"
     >
