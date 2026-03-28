@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
@@ -13,7 +13,7 @@ import QRCode from 'react-qr-code';
 const Navbar = () => {
   const { profile } = useAuth();
   return (
-    <nav className="fixed top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm pointer-events-none">
+    <nav className="absolute top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm pointer-events-none">
       <div className="w-10 flex items-center justify-start pointer-events-auto">
         {profile?.photoURL && (
           <motion.div 
@@ -43,7 +43,7 @@ const BottomNav = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 flex justify-around items-center px-4 py-3 bg-glass rounded-full card-shadow">
+    <footer className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] z-50 flex justify-around items-center px-4 py-3 bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
       <Link to="/" className={`relative flex flex-col items-center justify-center p-3 rounded-full transition-all duration-300 ${isActive('/') ? 'text-primary scale-110' : 'text-on-surface/40 hover:text-on-surface'}`}>
         <Layers size={22} fill={isActive('/') ? 'currentColor' : 'none'} />
         {isActive('/') && <motion.div layoutId="nav-glow" className="absolute inset-0 bg-primary/10 rounded-full blur-md" />}
@@ -218,17 +218,19 @@ const MovieCard = ({ movie, onSwipe, onInfo }: MovieCardProps) => {
       key={movie.id}
       style={{ x, y, rotate, opacity, scale }}
       drag
+      dragElastic={0.8}
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      whileTap={{ scale: 1.02, cursor: 'grabbing' }}
       onDragEnd={onDragEnd}
-      initial={{ scale: 0.95, opacity: 0, y: 20 }}
-      animate={{ scale: 1, opacity: 1, y: 0 }}
+      initial={{ scale: 0.9, opacity: 0, y: 40 }}
+      animate={{ scale: 1, opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
       exit={{ 
-        x: x.get() > 100 ? 800 : x.get() < -100 ? -800 : 0, 
-        y: y.get() < -100 ? -800 : 0,
+        x: x.get() > 100 ? 500 : x.get() < -100 ? -500 : 0, 
+        y: y.get() < -100 ? -500 : 0,
         opacity: 0, 
-        transition: { duration: 0.4, ease: "easeIn" } 
+        transition: { duration: 0.25, ease: "easeOut" } 
       }}
-      className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab active:cursor-grabbing bg-surface-container-highest border border-white/5"
+      className="absolute inset-0 rounded-[2.5rem] overflow-hidden card-shadow group cursor-grab bg-surface-container-highest border border-white/5 shadow-2xl"
     >
       {!imageLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface">
@@ -744,6 +746,7 @@ const ProfileScreen = () => {
   const [partnerIdInput, setPartnerIdInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (profile?.partnerId) {
@@ -827,10 +830,10 @@ const ProfileScreen = () => {
               </div>
             )}
 
-            <div className="pt-4 border-t border-white/5 space-y-4">
+            <div className="pt-6 border-t border-white/5 space-y-6">
               <button 
                 onClick={() => setShowQr(!showQr)} 
-                className="w-full bg-[#1a1a1a] border border-secondary/30 text-secondary font-headline font-bold py-3 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
+                className="w-full bg-[#1a1a1a] border border-secondary/30 text-secondary font-headline font-bold py-4 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
               >
                 Közös link QR mutatása
               </button>
@@ -852,9 +855,28 @@ const ProfileScreen = () => {
                 )}
               </AnimatePresence>
 
-              <p className="text-[10px] text-on-surface-variant opacity-40 uppercase tracking-widest text-center pt-2">
-                A Te azonosítód: <span className="text-white/60 font-mono select-all">{user?.uid}</span>
-              </p>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(user?.uid || '');
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="w-full bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-4 rounded-2xl transition-colors flex items-center justify-between group active:scale-[0.98]"
+              >
+                <div className="flex flex-col items-start gap-1">
+                  <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">A te azonosítód</span>
+                  <span className="text-white/80 font-mono text-xs">{user?.uid}</span>
+                </div>
+                {copied ? (
+                  <div className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1.5 rounded-full">
+                    <Check size={14} /> <span className="text-[10px] font-bold uppercase tracking-widest">Másolva</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-white/40 group-hover:text-white/80 transition-colors">
+                    <Copy size={16} />
+                  </div>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -919,18 +941,20 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {!isMovieDetail && <Navbar />}
-      <div className="flex-1 overflow-auto">
-        <Routes>
-          <Route path="/" element={<SwipeScreen />} />
-          <Route path="/watchlist" element={<WatchlistScreen />} />
-          <Route path="/movie/:id" element={<MovieDetailScreen />} />
-          <Route path="/profile" element={<ProfileScreen />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="w-full sm:w-[414px] sm:h-[896px] sm:max-h-[95vh] bg-background sm:rounded-[2.5rem] sm:border border-white/10 sm:shadow-2xl sm:shadow-red-900/10 overflow-hidden relative flex flex-col">
+        {!isMovieDetail && <Navbar />}
+        <div className="flex-1 overflow-x-hidden overflow-y-auto w-full h-full pb-20 relative">
+          <Routes>
+            <Route path="/" element={<SwipeScreen />} />
+            <Route path="/watchlist" element={<WatchlistScreen />} />
+            <Route path="/movie/:id" element={<MovieDetailScreen />} />
+            <Route path="/profile" element={<ProfileScreen />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
+        {!isMovieDetail && <BottomNav />}
       </div>
-      {!isMovieDetail && <BottomNav />}
     </div>
   );
 };
