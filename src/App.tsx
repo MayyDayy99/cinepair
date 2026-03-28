@@ -29,20 +29,20 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="absolute top-0 left-0 w-full z-[60] flex justify-between items-center px-4 py-2 bg-background/80 backdrop-blur-md pointer-events-none">
-      <div className="w-8 flex items-center justify-start pointer-events-auto">
+    <nav className="w-full z-[60] flex justify-between items-center px-4 py-2 bg-background/80 backdrop-blur-md shrink-0">
+      <div className="w-8 flex items-center justify-start">
         {profile?.photoURL && (
           <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30">
             <img src={profile.photoURL} alt="Avatar" referrerPolicy="no-referrer" />
           </div>
         )}
       </div>
-      <Link to="/" className="flex items-center gap-1.5 pointer-events-auto">
+      <Link to="/" className="flex items-center gap-1.5">
         <span className="text-lg font-black tracking-[-0.03em] text-gradient font-headline uppercase leading-none">
           CINEPAIR
         </span>
       </Link>
-      <div className="w-8 flex items-center justify-end pointer-events-auto">
+      <div className="w-8 flex items-center justify-end">
         <button onClick={toggleFullscreen} title="Teljes képernyő" className="text-on-surface/40 hover:text-white transition-colors">
           {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
         </button>
@@ -448,7 +448,7 @@ const SwipeScreen = () => {
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : null;
 
   return (
-    <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pt-10 pb-2 overflow-hidden">
+    <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pb-2 overflow-hidden">
       <AnimatePresence>
         {showMatch && (
           <motion.div 
