@@ -51,9 +51,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Create profile if it doesn't exist
             setDoc(userRef, {
               uid: firebaseUser.uid,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
-              email: firebaseUser.email,
+              displayName: firebaseUser.displayName || 'Vendég',
+              photoURL: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=Vend%C3%A9g&background=f5c518&color=000`,
+              email: firebaseUser.email || 'guest@cinepair.app',
               partnerId: null,
               createdAt: new Date().toISOString()
             }, { merge: true });

@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/re
 import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { signInWithGoogle, logout } from './firebase';
+import { signInWithGoogle, signInAsGuest, logout } from './firebase';
 import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, swipeMovie, undoSwipe, removeMatch, subscribeToMatches, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 import toast, { Toaster } from 'react-hot-toast';
@@ -93,6 +93,17 @@ const LoginScreen = () => {
     }
   };
 
+  const handleGuestLogin = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const shareUrl = "https://mayydayy99.github.io/cinepair/";
 
   return (
@@ -158,6 +169,15 @@ const LoginScreen = () => {
                     {loading ? 'Belépés...' : 'Belépés Google-lel'}
                   </button>
                   
+                  <button 
+                    onClick={handleGuestLogin}
+                    disabled={loading}
+                    className="w-full bg-white/5 border border-white/10 text-white/70 font-headline font-bold py-4 rounded-2xl hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
+                  >
+                    <UserIcon size={18} />
+                    Vendégként folytatom
+                  </button>
+
                   <button 
                     onClick={() => setShowQr(true)}
                     className="w-full bg-[#1a1a1a] border border-[#f5c518]/30 text-[#f5c518] font-headline font-bold py-4 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
