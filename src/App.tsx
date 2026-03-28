@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, logout } from './firebase';
@@ -12,6 +12,22 @@ import QRCode from 'react-qr-code';
 
 const Navbar = () => {
   const { profile } = useAuth();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
+
   return (
     <nav className="absolute top-0 left-0 w-full z-[60] flex justify-between items-center px-6 py-5 bg-gradient-to-b from-background via-background/80 to-transparent backdrop-blur-sm pointer-events-none">
       <div className="w-10 flex items-center justify-start pointer-events-auto">
@@ -33,7 +49,11 @@ const Navbar = () => {
           Cinematic Match
         </span>
       </Link>
-      <div className="w-10" />
+      <div className="w-10 flex items-center justify-end pointer-events-auto">
+        <button onClick={toggleFullscreen} className="text-on-surface/40 hover:text-white transition-colors">
+          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+        </button>
+      </div>
     </nav>
   );
 };
@@ -667,9 +687,8 @@ const MovieDetailScreen = () => {
     const loadMovie = async () => {
       if (id) {
         setLoading(true);
-        const allMovies = await getMovies();
-        const found = allMovies.find(m => m.id === id);
-        setMovie(found || null);
+        const movieData = await getMovieById(id);
+        setMovie(movieData);
         setLoading(false);
       }
     };
@@ -698,16 +717,16 @@ const MovieDetailScreen = () => {
   }
 
   return (
-    <div className="h-full w-full overflow-y-auto pb-40">
+    <div className="min-h-full w-full relative pb-10">
       {/* Header */}
-      <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-6 pointer-events-none">
+      <header className="absolute top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-6 pointer-events-none">
         <button 
           onClick={() => navigate(-1)} 
-          className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-white border border-white/10 hover:bg-black/60 transition-all active:scale-90"
+          className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-white border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl"
         >
           <X size={24} />
         </button>
-        <button className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-primary border border-white/10 hover:bg-black/60 transition-all active:scale-90">
+        <button className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-primary border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl">
           <Heart size={24} fill="currentColor" />
         </button>
       </header>
