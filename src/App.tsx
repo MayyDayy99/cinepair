@@ -43,9 +43,11 @@ const Navbar = () => {
         </span>
       </Link>
       <div className="w-8 flex items-center justify-end">
-        <button onClick={toggleFullscreen} title="Teljes képernyő" className="text-on-surface/40 hover:text-white transition-colors">
-          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-        </button>
+        {!window.matchMedia('(display-mode: standalone)').matches && (
+          <button onClick={toggleFullscreen} title="Teljes képernyő" className="text-on-surface/40 hover:text-white transition-colors">
+            {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+          </button>
+        )}
       </div>
     </nav>
   );
