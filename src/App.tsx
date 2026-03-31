@@ -489,8 +489,9 @@ const SwipeScreen = () => {
       let finalMovies = [...unswiped];
 
       // Mix in partner likes if available (80-20 ratio)
-      if (profile?.partnerId) {
-        const partnerLikes = await getPartnerLikedMovies(profile.partnerId, user.uid);
+      const partnerIds: string[] = profile?.partnerIds || [];
+      if (partnerIds.length > 0) {
+        const partnerLikes = await getPartnerLikedMovies(partnerIds, user.uid);
         if (partnerLikes.length > 0) {
           const mixed: Movie[] = [];
           let pIdx = 0;
@@ -548,7 +549,7 @@ const SwipeScreen = () => {
     setTimeout(async () => {
       const movie = movies[currentIndex];
       setLastSwipe({ movieId: movie.id, index: currentIndex });
-      const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerId);
+      const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerIds || []);
       
       if (isMatch) {
         navigator.vibrate?.([50, 30, 50]);
@@ -756,14 +757,15 @@ const WatchlistScreen = () => {
   const [loadingPartnerLikes, setLoadingPartnerLikes] = useState(false);
 
   useEffect(() => {
-    if (showPartnerLikes && user && profile?.partnerId) {
+    const partnerIds: string[] = profile?.partnerIds || [];
+    if (showPartnerLikes && user && partnerIds.length > 0) {
       setLoadingPartnerLikes(true);
-      getPartnerLikedMovies(profile.partnerId, user.uid).then(movies => {
+      getPartnerLikedMovies(partnerIds, user.uid).then(movies => {
         setPartnerLikedMovies(movies);
         setLoadingPartnerLikes(false);
       });
     }
-  }, [showPartnerLikes, user, profile?.partnerId]);
+  }, [showPartnerLikes, user, profile?.partnerIds]);
 
   useEffect(() => {
     if (user) {
@@ -847,7 +849,7 @@ const WatchlistScreen = () => {
             className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${!showPartnerLikes ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}>
             <Heart size={14} fill={!showPartnerLikes ? "currentColor" : "none"} /> MATCH-EK
           </button>
-          <button onClick={() => { if (!profile?.partnerId) { toast.error('Csak partnerrel érhető el!'); return; } setShowPartnerLikes(true); }}
+          <button onClick={() => { if (!profile?.partnerIds?.length) { toast.error('Csak csoporttaggal érhető el!'); return; } setShowPartnerLikes(true); }}
             className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'}`}>
             <Sparkles size={14} fill={showPartnerLikes ? "currentColor" : "none"} /> PÁROM KEDVENCEI
           </button>
@@ -1117,23 +1119,20 @@ const MovieDetailScreen = () => {
 };
 
 const ProfileScreen = () => {
-  const { profile, user, setPartnerId } = useAuth();
+  const { profile, user, addPartnerId, removePartnerId } = useAuth();
   const [partnerIdInput, setPartnerIdInput] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (profile?.partnerId) {
-      setPartnerIdInput(profile.partnerId);
-    }
-  }, [profile]);
+  const partnerIds: string[] = profile?.partnerIds || [];
 
-  const handleSetPartner = async () => {
-    await setPartnerId(partnerIdInput);
-    setIsEditing(false);
+  const handleAddPartner = async () => {
+    const trimmed = partnerIdInput.trim();
+    if (!trimmed || trimmed === user?.uid || partnerIds.includes(trimmed)) return;
+    await addPartnerId(trimmed);
+    setPartnerIdInput('');
   };
-  
+
   const myPartnerUrl = `https://mayydayy99.github.io/cinepair/#/?partner=${user?.uid || ''}`;
 
   return (
@@ -1161,8 +1160,8 @@ const ProfileScreen = () => {
         {/* Partner Connection Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between ml-4">
-            <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Partner összekötés</h3>
-            <button 
+            <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Csoport összekötés</h3>
+            <button
               onClick={() => {
                 if ('Notification' in window) {
                   Notification.requestPermission().then(permission => {
@@ -1178,46 +1177,54 @@ const ProfileScreen = () => {
           <div className="bg-glass rounded-[2rem] p-8 border border-white/5 shadow-2xl space-y-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary border border-secondary/20">
-                <Heart size={24} fill="currentColor" />
+                <UserPlus size={22} />
               </div>
               <div>
-                <p className="text-sm font-bold text-white uppercase tracking-tight">Párosítás</p>
-                <p className="text-xs text-on-surface-variant opacity-60">Add meg a párod azonosítóját a közös listához.</p>
+                <p className="text-sm font-bold text-white uppercase tracking-tight">Tagok ({partnerIds.length})</p>
+                <p className="text-xs text-on-surface-variant opacity-60">Adj hozzá párt, barátot vagy családtagot.</p>
               </div>
             </div>
 
-            {isEditing || !profile?.partnerId ? (
-              <div className="space-y-4">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={partnerIdInput}
-                    onChange={(e) => setPartnerIdInput(e.target.value)}
-                    placeholder="Partner User ID"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
-                  />
-                </div>
-                <button
-                  onClick={handleSetPartner}
-                  className="w-full bg-primary text-black font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/10"
-                >
-                  Mentés
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-secondary rounded-full animate-pulse" />
-                  <p className="text-sm font-bold text-white/80 font-mono">{profile.partnerId}</p>
-                </div>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="text-primary font-black text-[10px] uppercase tracking-widest hover:underline"
-                >
-                  Módosítás
-                </button>
+            {/* Connected partners list */}
+            {partnerIds.length > 0 && (
+              <div className="space-y-2">
+                {partnerIds.map((pid) => (
+                  <div key={pid} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-2 h-2 bg-secondary rounded-full shrink-0 animate-pulse" />
+                      <p className="text-xs font-bold text-white/70 font-mono truncate">
+                        {pid.slice(0, 8)}…{pid.slice(-4)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => removePartnerId(pid)}
+                      className="shrink-0 ml-3 w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:bg-error/20 hover:text-error transition-colors active:scale-90"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
+
+            {/* Add partner input */}
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={partnerIdInput}
+                onChange={(e) => setPartnerIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddPartner()}
+                placeholder="Partner / Családtag User ID"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
+              />
+              <button
+                onClick={handleAddPartner}
+                disabled={!partnerIdInput.trim()}
+                className="w-full bg-primary text-black font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <UserPlus size={18} /> Hozzáadás
+              </button>
+            </div>
 
             <div className="pt-6 border-t border-white/5 space-y-6">
               <button 
@@ -1252,9 +1259,11 @@ const ProfileScreen = () => {
                 }}
                 className="w-full bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-4 rounded-2xl transition-colors flex items-center justify-between group active:scale-[0.98]"
               >
-                <div className="flex flex-col items-start gap-1">
+                <div className="flex flex-col items-start gap-1 min-w-0">
                   <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">A te azonosítód</span>
-                  <span className="text-white/80 font-mono text-xs">{user?.uid}</span>
+                  <span className="text-white/80 font-mono text-xs truncate max-w-[180px]" title={user?.uid}>
+                    {user?.uid ? `${user.uid.slice(0, 10)}…${user.uid.slice(-6)}` : ''}
+                  </span>
                 </div>
                 {copied ? (
                   <div className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1.5 rounded-full">
@@ -1286,7 +1295,7 @@ const ProfileScreen = () => {
 };
 
 const AppContent = () => {
-  const { user, loading, setPartnerId } = useAuth();
+  const { user, loading, addPartnerId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
@@ -1347,7 +1356,7 @@ const AppContent = () => {
     }
 
     if (user && partnerId) {
-      setPartnerId(partnerId).then(() => {
+      addPartnerId(partnerId).then(() => {
         const url = new URL(window.location.href);
         if (url.hash.includes('?')) {
           const parts = url.hash.split('?');
@@ -1359,7 +1368,7 @@ const AppContent = () => {
         }
       });
     }
-  }, [user, location, setPartnerId]);
+  }, [user, location, addPartnerId]);
 
   if (loading) {
     return (

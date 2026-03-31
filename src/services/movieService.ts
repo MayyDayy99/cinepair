@@ -169,7 +169,7 @@ export async function getMovieTrailer(movieId: string): Promise<string | null> {
   }
 }
 
-export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerId?: string) {
+export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerIds?: string[]) {
   const path = `users/${userId}/swipes`;
   try {
     const swipeRef = doc(collection(db, path), movieId);
@@ -180,21 +180,25 @@ export async function swipeMovie(userId: string, movieId: string, type: 'like' |
       timestamp: serverTimestamp()
     });
 
-    if (type === 'like' && partnerId) {
-      const partnerSwipeRef = doc(db, `users/${partnerId}/swipes`, movieId);
-      const partnerSwipeSnap = await getDoc(partnerSwipeRef);
-      
-      if (partnerSwipeSnap.exists() && partnerSwipeSnap.data().type === 'like') {
-        const matchPath = 'matches';
-        const matchRef = doc(collection(db, matchPath), `${userId}_${partnerId}_${movieId}`);
-        await setDoc(matchRef, {
-          movieId,
-          userIds: [userId, partnerId],
-          matchedBy: userId,
-          timestamp: serverTimestamp()
-        });
-        return true;
+    if (type === 'like' && partnerIds && partnerIds.length > 0) {
+      let anyMatch = false;
+      for (const partnerId of partnerIds) {
+        const partnerSwipeRef = doc(db, `users/${partnerId}/swipes`, movieId);
+        const partnerSwipeSnap = await getDoc(partnerSwipeRef);
+
+        if (partnerSwipeSnap.exists() && partnerSwipeSnap.data().type === 'like') {
+          const sortedIds = [userId, partnerId].sort();
+          const matchRef = doc(db, 'matches', `${sortedIds[0]}_${sortedIds[1]}_${movieId}`);
+          await setDoc(matchRef, {
+            movieId,
+            userIds: [userId, partnerId],
+            matchedBy: userId,
+            timestamp: serverTimestamp()
+          });
+          anyMatch = true;
+        }
       }
+      return anyMatch;
     }
     return false;
   } catch (error) {
@@ -251,20 +255,26 @@ export async function getUserSwipes(userId: string): Promise<string[]> {
   }
 }
 
-export async function getPartnerLikedMovies(partnerId: string, myUserId: string): Promise<Movie[]> {
+export async function getPartnerLikedMovies(partnerIds: string[], myUserId: string): Promise<Movie[]> {
   try {
-    const partnerSwipesRef = collection(db, `users/${partnerId}/swipes`);
-    const q = query(partnerSwipesRef, where('type', '==', 'like'));
-    const partnerLikesSnap = await getDocs(q);
-    const partnerLikedIds = partnerLikesSnap.docs.map(doc => doc.id);
-    
-    // Also get my swipes to filter out what I already saw
     const mySwipedIds = await getUserSwipes(myUserId);
-    const neededIds = partnerLikedIds.filter(id => !mySwipedIds.includes(id));
-    
-    // Fetch top 5-10 to mix in
+    const seenIds = new Set(mySwipedIds);
+    const collectedIds: string[] = [];
+
+    for (const partnerId of partnerIds) {
+      const partnerSwipesRef = collection(db, `users/${partnerId}/swipes`);
+      const q = query(partnerSwipesRef, where('type', '==', 'like'));
+      const partnerLikesSnap = await getDocs(q);
+      for (const d of partnerLikesSnap.docs) {
+        if (!seenIds.has(d.id)) {
+          seenIds.add(d.id);
+          collectedIds.push(d.id);
+        }
+      }
+    }
+
     const movies: Movie[] = [];
-    for (const id of neededIds.slice(0, 10)) {
+    for (const id of collectedIds.slice(0, 10)) {
       const movie = await getMovieById(id);
       if (movie) movies.push(movie);
     }

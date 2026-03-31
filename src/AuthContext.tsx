@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 interface AuthContextType {
@@ -8,7 +8,8 @@ interface AuthContextType {
   profile: any | null;
   loading: boolean;
   isAuthReady: boolean;
-  setPartnerId: (partnerId: string | null) => Promise<void>;
+  addPartnerId: (partnerId: string) => Promise<void>;
+  removePartnerId: (partnerId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,7 +17,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   isAuthReady: false,
-  setPartnerId: async () => {},
+  addPartnerId: async () => {},
+  removePartnerId: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -27,10 +29,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  const setPartnerId = async (partnerId: string | null) => {
+  const addPartnerId = async (partnerId: string) => {
     if (user) {
       const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, { partnerId }, { merge: true });
+      await updateDoc(userRef, { partnerIds: arrayUnion(partnerId) });
+    }
+  };
+
+  const removePartnerId = async (partnerId: string) => {
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { partnerIds: arrayRemove(partnerId) });
     }
   };
 
@@ -38,23 +47,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       setIsAuthReady(true);
-      
+
       if (firebaseUser) {
-        // Ensure user profile exists in Firestore
         const userRef = doc(db, 'users', firebaseUser.uid);
-        
-        // Setup listener for profile changes
+
         const unsubProfile = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
-            setProfile(docSnap.data());
+            const data = docSnap.data();
+            // Migrate legacy partnerId (string) → partnerIds (array)
+            if (data.partnerId && !data.partnerIds) {
+              updateDoc(userRef, {
+                partnerIds: [data.partnerId],
+                partnerId: null,
+              });
+            }
+            setProfile(data);
           } else {
-            // Create profile if it doesn't exist
             setDoc(userRef, {
               uid: firebaseUser.uid,
               displayName: firebaseUser.displayName || 'Vendég',
               photoURL: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=Vend%C3%A9g&background=f5c518&color=000`,
               email: firebaseUser.email || 'guest@cinepair.app',
-              partnerId: null,
+              partnerIds: [],
               createdAt: new Date().toISOString()
             }, { merge: true });
           }
@@ -72,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAuthReady, setPartnerId }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAuthReady, addPartnerId, removePartnerId }}>
       {children}
     </AuthContext.Provider>
   );
