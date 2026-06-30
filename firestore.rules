@@ -46,7 +46,8 @@ service cloud.firestore {
     }
 
     function isValidSwipe(data) {
-      return data.keys().hasAll(['userId', 'movieId', 'type', 'timestamp']) &&
+      return data.keys().hasOnly(['userId', 'movieId', 'type', 'timestamp']) &&
+             data.keys().hasAll(['userId', 'movieId', 'type', 'timestamp']) &&
              data.userId == request.auth.uid &&
              data.movieId is string &&
              data.type in ['like', 'dislike'] &&

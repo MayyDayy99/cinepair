@@ -784,7 +784,7 @@ const SwipeScreen = () => {
 };
 
 const WatchlistScreen = () => {
-  const { user, profile, matches } = useAuth();
+  const { user, profile, matches, matchesReady } = useAuth();
   const navigate = useNavigate();
   const [moviesData, setMoviesData] = useState<Record<string, Movie>>({});
   const moviesDataRef = useRef<Record<string, Movie>>({});
@@ -809,6 +809,9 @@ const WatchlistScreen = () => {
   // poster/metadata for movies we haven't loaded yet — deduped via a ref so realtime snapshots
   // don't re-fetch the entire watchlist on every update.
   useEffect(() => {
+    // Stay in the loading state until the first real matches snapshot arrives, so users with
+    // matches don't see a flash of the "no matches yet" empty state on mount.
+    if (!matchesReady) return;
     let cancelled = false;
     (async () => {
       const missing = matches.filter(m => !moviesDataRef.current[m.movieId]);
@@ -825,7 +828,7 @@ const WatchlistScreen = () => {
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [matches]);
+  }, [matches, matchesReady]);
 
   const handleRoulette = () => {
     const unwatched = matches.filter(m => !m.watched);
@@ -1355,7 +1358,7 @@ const ProfileScreen = () => {
 };
 
 const AppContent = () => {
-  const { user, loading, addPartnerId, matches } = useAuth();
+  const { user, loading, addPartnerId, matches, matchesReady } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
@@ -1367,6 +1370,9 @@ const AppContent = () => {
       prevMatchCountRef.current = null;
       return;
     }
+    // Wait for the first real snapshot before treating count changes as deltas — otherwise the
+    // initial 0 -> N jump would fire a bogus "new match" notification for a pre-existing match.
+    if (!matchesReady) return;
     const prev = prevMatchCountRef.current;
     if (prev !== null && matches.length > prev) {
       // Find the newest match based on timestamp
@@ -1402,7 +1408,7 @@ const AppContent = () => {
       }
     }
     prevMatchCountRef.current = matches.length;
-  }, [matches, user, navigate]);
+  }, [matches, matchesReady, user, navigate]);
 
   useEffect(() => {
     let partnerId = null;

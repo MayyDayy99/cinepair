@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   profile: any | null;
   matches: any[];
+  matchesReady: boolean;
   loading: boolean;
   isAuthReady: boolean;
   addPartnerId: (partnerId: string) => Promise<void>;
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   matches: [],
+  matchesReady: false,
   loading: true,
   isAuthReady: false,
   addPartnerId: async () => {},
@@ -30,6 +32,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [matches, setMatches] = useState<any[]>([]);
+  // Distinguishes "no matches yet, still loading" from "first snapshot received (genuinely 0/N)".
+  const [matchesReady, setMatchesReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
@@ -124,14 +128,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user) {
       setMatches([]);
+      setMatchesReady(false);
       return;
     }
-    const unsub = subscribeToMatches(user.uid, setMatches);
+    setMatchesReady(false);
+    const unsub = subscribeToMatches(user.uid, (m) => {
+      setMatches(m);
+      setMatchesReady(true);
+    });
     return () => unsub();
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, profile, matches, loading, isAuthReady, addPartnerId, removePartnerId }}>
+    <AuthContext.Provider value={{ user, profile, matches, matchesReady, loading, isAuthReady, addPartnerId, removePartnerId }}>
       {children}
     </AuthContext.Provider>
   );
