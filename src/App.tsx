@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, signInAsGuest, logout } from './firebase';
-import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, getPartnerLikedMovies, swipeMovie, undoSwipe, removeMatch, toggleMatchWatched, subscribeToMatches, Movie } from './services/movieService';
+import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, getPartnerLikedMovies, swipeMovie, undoSwipe, removeMatch, toggleMatchWatched, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -473,25 +473,36 @@ const SwipeScreen = () => {
   const [genres, setGenres] = useState<{id: number; name: string}[]>([]);
   const [leaveDirection, setLeaveDirection] = useState<'left' | 'right' | null>(null);
   const [lastSwipe, setLastSwipe] = useState<{movieId: string; index: number} | null>(null);
+  // Monotonic token: lets an in-flight load detect that a newer load (e.g. filter change) superseded it.
+  const loadGenRef = useRef(0);
 
   useEffect(() => { getGenreList().then(setGenres); }, []);
 
   const loadMoreMovies = async (targetPage: number, forceYear?: string, forceGenre?: string) => {
+    const gen = ++loadGenRef.current;
     setLoading(true);
     const yr = forceYear !== undefined ? forceYear : yearFilter;
     const gr = forceGenre !== undefined ? forceGenre : genreFilter;
     const fetchedMovies = await getMovies({ page: targetPage, year: yr, genreId: gr });
-    
+
+    // A newer load started while we were awaiting — drop this stale result.
+    if (gen !== loadGenRef.current) return;
+
     if (user) {
       const swipedIds = await getUserSwipes(user.uid);
-      const unswiped = fetchedMovies.filter(m => !swipedIds.includes(m.id));
-      
+      if (gen !== loadGenRef.current) return;
+      const swipedSet = new Set(swipedIds);
+      const unswiped = fetchedMovies.filter(m => !swipedSet.has(m.id));
+      const pageIds = new Set(unswiped.map(m => m.id));
+
       let finalMovies = [...unswiped];
 
       // Mix in partner likes if available (80-20 ratio)
       const partnerIds: string[] = profile?.partnerIds || [];
       if (partnerIds.length > 0) {
-        const partnerLikes = await getPartnerLikedMovies(partnerIds, user.uid);
+        // Exclude any partner like that already appears on this discover page (avoids a duplicate card).
+        const partnerLikes = (await getPartnerLikedMovies(partnerIds, user.uid)).filter(m => !pageIds.has(m.id));
+        if (gen !== loadGenRef.current) return;
         if (partnerLikes.length > 0) {
           const mixed: Movie[] = [];
           let pIdx = 0;
@@ -510,18 +521,27 @@ const SwipeScreen = () => {
         }
       }
 
-      if (finalMovies.length === 0 && fetchedMovies.length > 0) {
+      // Dedupe by id so the same movie can never appear twice in one deck.
+      const seen = new Set<string>();
+      finalMovies = finalMovies.filter(m => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+
+      // Recurse to the next page if this one is fully swiped — but cap depth to avoid
+      // a long burst of serial requests freezing the loader.
+      if (finalMovies.length === 0 && fetchedMovies.length > 0 && targetPage < 25) {
         setPage(targetPage + 1);
         await loadMoreMovies(targetPage + 1, yr, gr);
         return;
       }
+      if (gen !== loadGenRef.current) return;
       setMovies(finalMovies);
       setCurrentIndex(0);
+      setLastSwipe(null);
     } else {
       setMovies(fetchedMovies);
       setCurrentIndex(0);
+      setLastSwipe(null);
     }
-    setLoading(false);
+    if (gen === loadGenRef.current) setLoading(false);
   };
 
   useEffect(() => {
@@ -549,13 +569,21 @@ const SwipeScreen = () => {
     setTimeout(async () => {
       const movie = movies[currentIndex];
       setLastSwipe({ movieId: movie.id, index: currentIndex });
-      const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerIds || []);
-      
-      if (isMatch) {
-        navigator.vibrate?.([50, 30, 50]);
-        setShowMatch(movie);
-      } else {
-        processNext();
+      try {
+        const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerIds || []);
+
+        if (isMatch) {
+          navigator.vibrate?.([50, 30, 50]);
+          setShowMatch(movie);
+        } else {
+          processNext();
+          setLeaveDirection(null);
+        }
+      } catch (e) {
+        // A Firestore write failure must not strand the deck (the await runs in a timer,
+        // so ErrorBoundary cannot catch it). Recover: reset state and tell the user.
+        console.error('swipe failed:', e);
+        toast.error('Nem sikerült menteni a húzást. Próbáld újra!');
         setLeaveDirection(null);
       }
     }, 10);
@@ -563,14 +591,23 @@ const SwipeScreen = () => {
 
   const handleUndo = async () => {
     if (!lastSwipe || !user) return;
-    await undoSwipe(user.uid, lastSwipe.movieId);
+    try {
+      await undoSwipe(user.uid, lastSwipe.movieId);
+    } catch (e) {
+      console.error('undo failed:', e);
+    }
     navigator.vibrate?.(10);
-    setCurrentIndex(lastSwipe.index);
+    // Only restore the index if it still points at the movie we un-swiped; the deck may have
+    // been replaced by a page load in between, in which case the stored index is meaningless.
+    if (movies[lastSwipe.index]?.id === lastSwipe.movieId) {
+      setCurrentIndex(lastSwipe.index);
+    }
     setLastSwipe(null);
   };
 
   const handleMatchContinue = () => {
     setShowMatch(null);
+    setLeaveDirection(null);
     processNext();
   };
 
@@ -614,6 +651,8 @@ const SwipeScreen = () => {
 
   const currentMovie = movies[currentIndex];
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : null;
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 11 }, (_, i) => currentYear - i);
 
   return (
     <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pb-2 overflow-hidden">
@@ -689,8 +728,7 @@ const SwipeScreen = () => {
           <select value={yearFilter} aria-label="Év" onChange={(e) => setYearFilter(e.target.value)}
             className="bg-black/40 text-white border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl cursor-pointer focus:outline-none">
             <option value="">Év</option>
-            <option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option>
-            <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
+            {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
           </select>
           <select value={genreFilter} aria-label="Műfaj" onChange={(e) => setGenreFilter(e.target.value)}
             className="bg-black/40 text-white border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl cursor-pointer focus:outline-none">
@@ -746,10 +784,10 @@ const SwipeScreen = () => {
 };
 
 const WatchlistScreen = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, matches } = useAuth();
   const navigate = useNavigate();
-  const [matches, setMatches] = useState<any[]>([]);
   const [moviesData, setMoviesData] = useState<Record<string, Movie>>({});
+  const moviesDataRef = useRef<Record<string, Movie>>({});
   const [loading, setLoading] = useState(true);
   const [rouletteWinner, setRouletteWinner] = useState<Movie | null>(null);
   const [showPartnerLikes, setShowPartnerLikes] = useState(false);
@@ -767,35 +805,27 @@ const WatchlistScreen = () => {
     }
   }, [showPartnerLikes, user, profile?.partnerIds]);
 
+  // matches come from the single app-wide subscription (AuthContext). Here we only resolve
+  // poster/metadata for movies we haven't loaded yet — deduped via a ref so realtime snapshots
+  // don't re-fetch the entire watchlist on every update.
   useEffect(() => {
-    if (user) {
-      setLoading(true);
-      const unsub = subscribeToMatches(user.uid, async (newMatches) => {
-        const sorted = [...newMatches].sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
-        setMatches(sorted);
-        
-        const newMoviesData = { ...moviesData };
-        let changed = false;
-        
-        for (const match of sorted) {
-          if (!newMoviesData[match.movieId]) {
-            const data = await getMovieById(match.movieId);
-            if (data) {
-              newMoviesData[match.movieId] = data;
-              changed = true;
-            }
-          }
+    let cancelled = false;
+    (async () => {
+      const missing = matches.filter(m => !moviesDataRef.current[m.movieId]);
+      if (missing.length > 0) {
+        const fetched = await Promise.all(missing.map(m => getMovieById(m.movieId)));
+        if (cancelled) return;
+        const updates: Record<string, Movie> = {};
+        missing.forEach((m, i) => { const mv = fetched[i]; if (mv) updates[m.movieId] = mv; });
+        if (Object.keys(updates).length > 0) {
+          moviesDataRef.current = { ...moviesDataRef.current, ...updates };
+          setMoviesData(prev => ({ ...prev, ...updates }));
         }
-        
-        if (changed) {
-          setMoviesData(prev => ({ ...prev, ...newMoviesData }));
-        }
-        setLoading(false);
-      });
-
-      return () => unsub();
-    }
-  }, [user]);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [matches]);
 
   const handleRoulette = () => {
     const unwatched = matches.filter(m => !m.watched);
@@ -812,8 +842,8 @@ const WatchlistScreen = () => {
   };
 
   const displayMatches = [...matches].sort((a, b) => {
-    if (a.watched === b.watched) return 0;
-    return a.watched ? 1 : -1;
+    if (a.watched !== b.watched) return a.watched ? 1 : -1;
+    return (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0);
   });
 
   if (loading) {
@@ -877,7 +907,17 @@ const WatchlistScreen = () => {
                     <img src={movie.posterUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
                     <div className="absolute top-3 right-3">
-                      <button onClick={async (e) => { e.preventDefault(); await swipeMovie(user!.uid, movie.id, 'like', profile?.partnerId); toast.success('Lopva hozzáadva a listához! 😉', { icon: '❤️' }); setPartnerLikedMovies(prev => prev.filter(m => m.id !== movie.id)); }}
+                      <button onClick={async (e) => {
+                        e.preventDefault();
+                        try {
+                          await swipeMovie(user!.uid, movie.id, 'like', profile?.partnerIds || []);
+                          toast.success('Lopva hozzáadva a listához! 😉', { icon: '❤️' });
+                          setPartnerLikedMovies(prev => prev.filter(m => m.id !== movie.id));
+                        } catch (err) {
+                          console.error('stealth like failed:', err);
+                          toast.error('Nem sikerült hozzáadni.');
+                        }
+                      }}
                         className="w-10 h-10 bg-secondary/80 backdrop-blur-xl text-black rounded-full flex items-center justify-center active:scale-90 transition-transform shadow-xl">
                         <Heart size={20} fill="currentColor" />
                       </button>
@@ -915,9 +955,13 @@ const WatchlistScreen = () => {
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
                         <div className={`p-1.5 rounded-full shadow-lg ${match.watched ? 'bg-white/10 text-white/40' : 'bg-primary text-black'}`}><Heart size={14} fill="currentColor" /></div>
-                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMatchWatched(match.id, !match.watched); }}
+                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMatchWatched(match.id, !match.watched).catch(err => { console.error(err); toast.error('Nem sikerült menteni.'); }); }}
                           title={match.watched ? "Mégse láttuk" : "Láttuk"} className={`p-1.5 rounded-full shadow-lg transition-colors ${match.watched ? 'bg-primary text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}>
                           {match.watched ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (window.confirm('Törlöd ezt a találatot a közös listáról?')) removeMatch(match.id).catch(err => { console.error(err); toast.error('Nem sikerült törölni.'); }); }}
+                          title="Törlés" className="p-1.5 rounded-full shadow-lg bg-white/10 text-white hover:bg-error/40 transition-colors">
+                          <Trash2 size={14} />
                         </button>
                       </div>
                       <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -962,10 +1006,26 @@ const WatchlistScreen = () => {
 const MovieDetailScreen = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user, profile } = useAuth();
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
   const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [liking, setLiking] = useState(false);
+
+  const handleLike = async () => {
+    if (!user || !movie || liking) return;
+    setLiking(true);
+    try {
+      const isMatch = await swipeMovie(user.uid, movie.id, 'like', profile?.partnerIds || []);
+      toast.success(isMatch ? 'Match! 🍿' : 'Hozzáadva a kedveltekhez ❤️');
+    } catch (e) {
+      console.error('like failed:', e);
+      toast.error('Nem sikerült menteni.');
+    } finally {
+      setLiking(false);
+    }
+  };
 
   useEffect(() => {
     const loadMovie = async () => {
@@ -1014,7 +1074,7 @@ const MovieDetailScreen = () => {
         >
           <X size={24} />
         </button>
-        <button className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-primary border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl">
+        <button onClick={handleLike} disabled={liking} title="Tetszik" className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-primary border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl disabled:opacity-50">
           <Heart size={24} fill="currentColor" />
         </button>
       </header>
@@ -1105,9 +1165,9 @@ const MovieDetailScreen = () => {
           )}
           <button onClick={() => {
             if (navigator.share) {
-              navigator.share({ title: movie.title, text: `Nézd meg: ${movie.title} (${movie.year})`, url: window.location.href });
-            } else {
-              navigator.clipboard.writeText(window.location.href);
+              navigator.share({ title: movie.title, text: `Nézd meg: ${movie.title} (${movie.year})`, url: window.location.href }).catch(() => {});
+            } else if (navigator.clipboard) {
+              navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link másolva!')).catch(() => {});
             }
           }} className="w-full mt-4 py-5 bg-white/5 border border-white/10 rounded-2xl text-white font-headline font-bold uppercase tracking-widest text-xs active:scale-95 transition-transform">
             Megosztás
@@ -1253,7 +1313,7 @@ const ProfileScreen = () => {
 
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(user?.uid || '');
+                  navigator.clipboard?.writeText(user?.uid || '').catch(() => {});
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
@@ -1295,53 +1355,54 @@ const ProfileScreen = () => {
 };
 
 const AppContent = () => {
-  const { user, loading, addPartnerId } = useAuth();
+  const { user, loading, addPartnerId, matches } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
-  const [previousMatchCount, setPreviousMatchCount] = useState<number | null>(null);
+  // Tracked in a ref (not state) so detecting new matches never re-subscribes or re-runs setup.
+  const prevMatchCountRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (user) {
-      const unsub = subscribeToMatches(user.uid, async (matches) => {
-        if (previousMatchCount !== null && matches.length > previousMatchCount) {
-          // Find the newest match based on timestamp
-          const newMatch = matches.reduce((prev, current) => 
-            (prev.timestamp?.toMillis() || 0) > (current.timestamp?.toMillis() || 0) ? prev : current
-          );
-          
-          if (newMatch && newMatch.matchedBy && newMatch.matchedBy !== user.uid) {
-            const movie = await getMovieById(newMatch.movieId);
-            if (movie) {
-              // Trigger in-app toast
-              toast.custom((t) => (
-                <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-surface-container-high shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-2xl pointer-events-auto flex items-center border border-primary/20 p-4 gap-4`}>
-                  <div className="h-16 w-12 rounded-lg overflow-hidden shrink-0">
-                    <img src={movie.posterUrl} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[10px] font-black tracking-widest uppercase text-primary mb-1">Új Találat!</p>
-                    <p className="text-sm font-bold text-white line-clamp-1">{movie.title}</p>
-                    <p className="text-xs text-white/50">A párod épp most kedvelte!</p>
-                  </div>
-                  <button onClick={() => { toast.dismiss(t.id); navigate(`/movie/${movie.id}`); }} className="bg-primary text-black px-4 py-2 text-xs font-bold uppercase rounded-full">
-                    Nézem
-                  </button>
-                </div>
-              ), { duration: 5000, position: 'top-center' });
-
-              // Trigger OS notification if allowed
-              if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('Új CinePair Találat! 🍿', { body: `A párod is kedvelte: ${movie.title}`, icon: '/icon-512.png' });
-              }
-            }
-          }
-        }
-        setPreviousMatchCount(matches.length);
-      });
-      return unsub;
+    if (!user) {
+      prevMatchCountRef.current = null;
+      return;
     }
-  }, [user, previousMatchCount, navigate]);
+    const prev = prevMatchCountRef.current;
+    if (prev !== null && matches.length > prev) {
+      // Find the newest match based on timestamp
+      const newMatch = matches.reduce((p, current) =>
+        (p.timestamp?.toMillis() || 0) > (current.timestamp?.toMillis() || 0) ? p : current
+      );
+
+      if (newMatch && newMatch.matchedBy && newMatch.matchedBy !== user.uid) {
+        getMovieById(newMatch.movieId).then((movie) => {
+          if (!movie) return;
+          // Trigger in-app toast
+          toast.custom((t) => (
+            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-surface-container-high shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-2xl pointer-events-auto flex items-center border border-primary/20 p-4 gap-4`}>
+              <div className="h-16 w-12 rounded-lg overflow-hidden shrink-0">
+                <img src={movie.posterUrl} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-black tracking-widest uppercase text-primary mb-1">Új Találat!</p>
+                <p className="text-sm font-bold text-white line-clamp-1">{movie.title}</p>
+                <p className="text-xs text-white/50">A párod épp most kedvelte!</p>
+              </div>
+              <button onClick={() => { toast.dismiss(t.id); navigate(`/movie/${movie.id}`); }} className="bg-primary text-black px-4 py-2 text-xs font-bold uppercase rounded-full">
+                Nézem
+              </button>
+            </div>
+          ), { duration: 5000, position: 'top-center' });
+
+          // Trigger OS notification if allowed (base-aware icon so it resolves under /cinepair/)
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Új CinePair Találat! 🍿', { body: `A párod is kedvelte: ${movie.title}`, icon: `${(import.meta as any).env.BASE_URL}icon-512.png` });
+          }
+        });
+      }
+    }
+    prevMatchCountRef.current = matches.length;
+  }, [matches, user, navigate]);
 
   useEffect(() => {
     let partnerId = null;

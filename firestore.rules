@@ -1,32 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // ===============================================================
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Admin status must NOT be derived from a client-writable field.
+    // It is gated solely on a verified custom auth claim / hard-coded owner email.
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.admin == true ||
           (request.auth.token.email == "pr.nemes@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // True if the CURRENT user has `targetId` in their own partnerIds array.
+    function readerLinkedTo(targetId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        ('partnerIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+        (targetId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.partnerIds);
     }
 
     // ===============================================================
     // Data Validation
     // ===============================================================
     function isValidUser(data) {
-      return data.keys().hasAll(['uid']) &&
+      // Strict key allow-list: blocks privilege-escalation fields like `role`.
+      return data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'partnerId', 'partnerIds', 'email', 'createdAt']) &&
+             data.keys().hasAll(['uid']) &&
              data.uid is string && data.uid.size() > 0 &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('email' in data) || (data.email is string && data.email.size() < 320)) &&
+             (!('createdAt' in data) || (data.createdAt is string)) &&
+             (!('partnerIds' in data) || (data.partnerIds is list)) &&
              (!('partnerId' in data) || (data.partnerId is string));
     }
 
@@ -38,32 +53,62 @@ service cloud.firestore {
              data.timestamp is timestamp;
     }
 
+    // The other participant in a 2-person match (relative to the caller).
+    function matchPartnerId(userIds) {
+      return userIds[0] == request.auth.uid ? userIds[1] : userIds[0];
+    }
+
+    // Allows a user to add ONLY their own uid to another user's partnerIds
+    // (reciprocal pairing), without touching any other field or removing entries.
+    function onlyAddsSelfToPartners() {
+      return isAuthenticated() &&
+             'partnerIds' in resource.data &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['partnerIds']) &&
+             request.resource.data.partnerIds is list &&
+             request.resource.data.partnerIds.toSet().difference(resource.data.partnerIds.toSet()).hasOnly([request.auth.uid]) &&
+             resource.data.partnerIds.toSet().difference(request.resource.data.partnerIds.toSet()).size() == 0;
+    }
+
+    // A like swipe by `uid` on `movieId` must actually exist.
+    function hasLiked(uid, movieId) {
+      return exists(/databases/$(database)/documents/users/$(uid)/swipes/$(movieId)) &&
+             get(/databases/$(database)/documents/users/$(uid)/swipes/$(movieId)).data.type == 'like';
+    }
+
     function isValidMatch(data) {
-      return data.keys().hasAll(['movieId', 'userIds', 'timestamp']) &&
+      return data.keys().hasOnly(['movieId', 'userIds', 'matchedBy', 'timestamp', 'watched']) &&
+             data.keys().hasAll(['movieId', 'userIds', 'matchedBy', 'timestamp']) &&
              data.movieId is string &&
              data.userIds is list &&
              data.userIds.size() == 2 &&
              request.auth.uid in data.userIds &&
-             data.timestamp is timestamp;
+             data.matchedBy == request.auth.uid &&
+             data.timestamp is timestamp &&
+             // Both sides must genuinely have liked the movie — no forging matches onto victims.
+             hasLiked(request.auth.uid, data.movieId) &&
+             hasLiked(matchPartnerId(data.userIds), data.movieId);
     }
 
     // ===============================================================
     // Match Rules
     // ===============================================================
-    
+
     match /movies/{movieId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isOwner(userId) && isValidUser(request.resource.data);
+      // Only the owner and members the owner has linked may read a profile (PII: email).
+      allow read: if isOwner(userId) || readerLinkedTo(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      // Owner can edit their own doc; anyone else may only append their own uid (reciprocal pairing).
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || onlyAddsSelfToPartners();
     }
 
     match /users/{userId}/swipes/{swipeId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.partnerId == userId);
+      // A reader may see a partner's swipes only if the partner is in the reader's partnerIds.
+      allow read: if isOwner(userId) || readerLinkedTo(userId);
       allow create: if isOwner(userId) && isValidSwipe(request.resource.data);
       allow update, delete: if isOwner(userId);
     }
@@ -71,7 +116,11 @@ service cloud.firestore {
     match /matches/{matchId} {
       allow read: if isAuthenticated() && request.auth.uid in resource.data.userIds;
       allow create: if isAuthenticated() && isValidMatch(request.resource.data);
-      allow update, delete: if isAuthenticated() && request.auth.uid in resource.data.userIds;
+      // Members may only flip `watched`; membership/movie/initiator are immutable.
+      allow update: if isAuthenticated() &&
+                       request.auth.uid in resource.data.userIds &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['watched']);
+      allow delete: if isAuthenticated() && request.auth.uid in resource.data.userIds;
     }
   }
 }

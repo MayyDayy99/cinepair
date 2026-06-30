@@ -1,13 +1,18 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, addDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+
+// Prefer deploy-time env (VITE_FIREBASE_*) so secrets/projects are actually configurable;
+// fall back to the public web config for local dev. (A Firebase web apiKey is not a secret,
+// but the project must be drivable from the documented env surface.)
+const env = (import.meta as any).env || {};
 const firebaseConfig = {
-  apiKey: "AIzaSyC8E5q9agK_utY_GZzvt9NIvIO0b1HV2Gk",
-  authDomain: "cinepair-31543.firebaseapp.com",
-  projectId: "cinepair-31543",
-  storageBucket: "cinepair-31543.firebasestorage.app",
-  messagingSenderId: "113009325170",
-  appId: "1:113009325170:web:76cb08f667a371ddd8feeb"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyC8E5q9agK_utY_GZzvt9NIvIO0b1HV2Gk",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "cinepair-31543.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "cinepair-31543",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "cinepair-31543.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "113009325170",
+  appId: env.VITE_FIREBASE_APP_ID || "1:113009325170:web:76cb08f667a371ddd8feeb"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -69,14 +74,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. ");
-    }
-  }
-}
-testConnection();

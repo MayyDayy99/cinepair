@@ -57,6 +57,10 @@ async function loadGenreMap(): Promise<void> {
   if (genreMapLoaded || !TMDB_API_KEY) return;
   try {
     const response = await fetch(`${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    if (!response.ok) {
+      console.warn(`TMDB genre list failed: HTTP ${response.status}`);
+      return;
+    }
     const data = await response.json();
     if (data.genres) {
       genreMap = {};
@@ -108,15 +112,21 @@ export async function getMovies(options: MovieFetchOptions = {}): Promise<Movie[
     }
 
     const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`TMDB discover failed: HTTP ${response.status}`);
+      return [];
+    }
     const data = await response.json();
-    
+
     if (!data.results) return [];
 
-    const movies: Movie[] = data.results.map((m: any) => ({
+    const movies: Movie[] = data.results
+      .filter((m: any) => m && m.id != null && m.title)
+      .map((m: any) => ({
       id: m.id.toString(),
       title: m.title.toUpperCase(),
       year: m.release_date ? m.release_date.split('-')[0] : 'N/A',
-      rating: Math.round(m.vote_average * 10) / 10,
+      rating: Math.round((m.vote_average || 0) * 10) / 10,
       posterUrl: m.poster_path ? `${TMDB_IMAGE_BASE}${m.poster_path}` : 'https://images.unsplash.com/photo-1542204172-3f19114d5049?q=80&w=1035&auto=format&fit=crop',
       synopsis: m.overview || 'Nincs elérhető leírás.',
       genres: resolveGenres(m.genre_ids || []),
@@ -134,13 +144,17 @@ export async function getMovieById(movieId: string): Promise<Movie | null> {
   if (!TMDB_API_KEY) return null;
   try {
     const response = await fetch(`${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    if (!response.ok) {
+      console.warn(`TMDB movie ${movieId} failed: HTTP ${response.status}`);
+      return null;
+    }
     const m = await response.json();
-    if (!m.id) return null;
+    if (!m.id || !m.title) return null;
     return {
       id: m.id.toString(),
       title: m.title.toUpperCase(),
       year: m.release_date ? m.release_date.split('-')[0] : 'N/A',
-      rating: Math.round(m.vote_average * 10) / 10,
+      rating: Math.round((m.vote_average || 0) * 10) / 10,
       posterUrl: m.poster_path ? `${TMDB_IMAGE_BASE}${m.poster_path}` : 'https://images.unsplash.com/photo-1542204172-3f19114d5049?q=80&w=1035&auto=format&fit=crop',
       synopsis: m.overview || 'Nincs elérhető leírás.',
       genres: m.genres ? m.genres.map((g: any) => g.name) : ['Film'],
@@ -155,11 +169,16 @@ export async function getMovieTrailer(movieId: string): Promise<string | null> {
   if (!TMDB_API_KEY) return null;
   try {
     const response = await fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    if (!response.ok) {
+      console.warn(`TMDB trailer ${movieId} failed: HTTP ${response.status}`);
+      return null;
+    }
     const data = await response.json();
     let trailer = data.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');
     if (!trailer) {
       // Fallback to English
       const enResponse = await fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=en-US`);
+      if (!enResponse.ok) return null;
       const enData = await enResponse.json();
       trailer = enData.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');
     }
@@ -240,7 +259,9 @@ export function subscribeToMatches(userId: string, callback: (matches: any[]) =>
     const matches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(matches);
   }, (error) => {
-    handleFirestoreError(error, OperationType.LIST, path);
+    // Do NOT rethrow here: a thrown error inside the snapshot error handler becomes an
+    // uncatchable runtime error. Log instead so a transient failure can't crash the app.
+    console.error(`Firestore subscription error (${path}):`, error);
   });
 }
 
@@ -273,12 +294,9 @@ export async function getPartnerLikedMovies(partnerIds: string[], myUserId: stri
       }
     }
 
-    const movies: Movie[] = [];
-    for (const id of collectedIds.slice(0, 10)) {
-      const movie = await getMovieById(id);
-      if (movie) movies.push(movie);
-    }
-    return movies;
+    // Resolve up to 30 (was a silent cap of 10) in parallel instead of a slow N+1 loop.
+    const resolved = await Promise.all(collectedIds.slice(0, 30).map(id => getMovieById(id)));
+    return resolved.filter((m): m is Movie => m !== null);
   } catch (error) {
     console.error("Error fetching partner likes:", error);
     return [];
