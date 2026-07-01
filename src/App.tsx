@@ -30,7 +30,7 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="w-full z-[60] flex justify-between items-center px-4 py-2 bg-background/80 backdrop-blur-md shrink-0">
+    <nav style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }} className="w-full z-[60] flex justify-between items-center px-4 py-2 bg-background/80 backdrop-blur-md shrink-0">
       <div className="w-8 flex items-center justify-start">
         {profile?.photoURL && (
           <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30">
@@ -63,7 +63,7 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50">
+    <nav style={{ bottom: 'calc(2rem + env(safe-area-inset-bottom))' }} className="fixed left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50">
       <div className="bg-[#1a1a1a]/80 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-2 flex items-center justify-between relative shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)]">
         {/* Subtle inner glow */}
         <div className="absolute inset-x-8 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -172,8 +172,12 @@ const LoginScreen = () => {
     setLoading(true);
     try {
       await signInWithGoogle();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      // Don't nag when the user simply closed/cancelled the popup themselves.
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
+        toast.error('A bejelentkezés nem sikerült. Próbáld újra!');
+      }
     } finally {
       setLoading(false);
     }
@@ -185,6 +189,7 @@ const LoginScreen = () => {
       await signInAsGuest();
     } catch (error) {
       console.error(error);
+      toast.error('A vendég belépés nem sikerült. Próbáld újra!');
     } finally {
       setLoading(false);
     }
@@ -255,7 +260,7 @@ const LoginScreen = () => {
                       className="w-full bg-primary/10 border border-primary/20 text-primary font-headline font-black py-4 rounded-2xl flex items-center justify-center gap-3 uppercase tracking-widest text-[10px] animate-pulse"
                     >
                       <Smartphone size={18} />
-                      {isIOS ? 'App telepítése (iOS)' : 'Alkalmazás telepítése'}
+                      {isIOS ? 'Hozzáadás a főképernyőhöz' : 'Alkalmazás telepítése'}
                     </motion.button>
                   )}
 
@@ -379,7 +384,7 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
   return (
     <motion.div 
       key={movie.id}
-      style={{ x, y, rotateZ, rotateX, rotateY, opacity, scale, perspective: 1000 }}
+      style={{ x, y, rotateZ, rotateX, rotateY, opacity, scale, transformPerspective: 1000 }}
       custom={leaveDirection}
       drag
       dragElastic={1}
@@ -537,10 +542,12 @@ const SwipeScreen = () => {
       setMovies(finalMovies);
       setCurrentIndex(0);
       setLastSwipe(null);
+      setLeaveDirection(null);
     } else {
       setMovies(fetchedMovies);
       setCurrentIndex(0);
       setLastSwipe(null);
+      setLeaveDirection(null);
     }
     if (gen === loadGenRef.current) setLoading(false);
   };
@@ -561,33 +568,33 @@ const SwipeScreen = () => {
     }
   };
 
-  const handleSwipe = async (type: 'like' | 'dislike') => {
-    if (currentIndex >= movies.length) return;
-    
+  const handleSwipe = (type: 'like' | 'dislike') => {
+    // Ignore taps while a card is already leaving (prevents skipping cards on rapid taps).
+    if (currentIndex >= movies.length || leaveDirection || !user) return;
+
+    const movie = movies[currentIndex];
     setLeaveDirection(type === 'like' ? 'right' : 'left');
     navigator.vibrate?.(15);
-    
-    setTimeout(async () => {
-      const movie = movies[currentIndex];
-      setLastSwipe({ movieId: movie.id, index: currentIndex });
-      try {
-        const isMatch = await swipeMovie(user!.uid, movie.id, type, profile?.partnerIds || []);
+    setLastSwipe({ movieId: movie.id, index: currentIndex });
 
+    // Advance immediately so the card flies out without waiting on the network (no spring-back
+    // jank). leaveDirection is cleared by onExitComplete / loadMoreMovies once the exit finishes;
+    // the timeout is a safety net so the deck can never freeze if onExitComplete doesn't fire.
+    processNext();
+    setTimeout(() => setLeaveDirection(null), 350);
+
+    // Persist + detect a match in the background.
+    swipeMovie(user.uid, movie.id, type, profile?.partnerIds || [])
+      .then((isMatch) => {
         if (isMatch) {
           navigator.vibrate?.([50, 30, 50]);
           setShowMatch(movie);
-        } else {
-          processNext();
-          setLeaveDirection(null);
         }
-      } catch (e) {
-        // A Firestore write failure must not strand the deck (the await runs in a timer,
-        // so ErrorBoundary cannot catch it). Recover: reset state and tell the user.
+      })
+      .catch((e) => {
         console.error('swipe failed:', e);
         toast.error('Nem sikerült menteni a húzást. Próbáld újra!');
-        setLeaveDirection(null);
-      }
-    }, 10);
+      });
   };
 
   const handleUndo = async () => {
@@ -607,9 +614,9 @@ const SwipeScreen = () => {
   };
 
   const handleMatchContinue = () => {
+    // The deck already advanced optimistically when the card was swiped; just close the overlay.
     setShowMatch(null);
     setLeaveDirection(null);
-    processNext();
   };
 
   if (loading) {
@@ -628,9 +635,22 @@ const SwipeScreen = () => {
   }
 
   if (currentIndex >= movies.length) {
+    const hasFilters = !!(yearFilter || genreFilter);
+    const handleReset = () => {
+      if (hasFilters) {
+        // Clearing the filters re-triggers the load effect.
+        setGenreFilter('');
+        setYearFilter('');
+      } else {
+        // No filters to clear — just fetch the next page from scratch.
+        const next = page + 1;
+        setPage(next);
+        loadMoreMovies(next, '', '');
+      }
+    };
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-8">
-        <motion.div 
+        <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-primary shadow-2xl border border-white/5"
@@ -640,11 +660,13 @@ const SwipeScreen = () => {
         <div className="space-y-3 max-w-xs">
           <h2 className="text-3xl font-black font-headline tracking-tight uppercase">Vége a tekercsnek</h2>
           <p className="text-on-surface-variant font-body leading-relaxed opacity-70">
-            Még nem találtunk több filmet. Próbálj meg beállítani egy másik évet!
+            {hasFilters
+              ? 'Nincs több film ezekkel a szűrőkkel. Töröld a szűrőket a folytatáshoz!'
+              : 'Egyelőre mindent láttál. Nézz vissza később új filmekért!'}
           </p>
         </div>
-        <button onClick={() => setYearFilter('')} className="w-full max-w-xs py-5 bg-primary text-black rounded-2xl font-headline font-black uppercase tracking-tight shadow-2xl shadow-primary/20 active:scale-95 transition-transform">
-          Összes év mutatása
+        <button onClick={handleReset} className="w-full max-w-xs py-5 bg-primary text-black rounded-2xl font-headline font-black uppercase tracking-tight shadow-2xl shadow-primary/20 active:scale-95 transition-transform">
+          {hasFilters ? 'Szűrők törlése' : 'Újratöltés'}
         </button>
       </div>
     );
@@ -746,18 +768,20 @@ const SwipeScreen = () => {
       </div>
 
       <div className="relative w-full flex-1 max-w-md flex items-center justify-center z-10" style={{ minHeight: 0 }}>
-        <AnimatePresence mode="popLayout" custom={leaveDirection}>
-          {nextMovie && (
-            <div 
-              key={`next-${nextMovie.id}`}
-              className="absolute inset-0 rounded-[2.5rem] overflow-hidden opacity-40 scale-[0.92] translate-y-4 blur-[2px] pointer-events-none bg-surface-container-highest border border-white/5"
-            >
-              <img src={nextMovie.posterUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              <div className="absolute inset-0 bg-black/40" />
-            </div>
-          )}
-          
-          <MovieCard 
+        {/* Static peek of the next card behind the deck (no enter/exit animation needed). */}
+        {nextMovie && (
+          <div
+            key={`next-${nextMovie.id}`}
+            aria-hidden="true"
+            className="absolute inset-0 rounded-[2.5rem] overflow-hidden opacity-40 scale-[0.92] translate-y-4 blur-[2px] pointer-events-none bg-surface-container-highest border border-white/5"
+          >
+            <img src={nextMovie.posterUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <div className="absolute inset-0 bg-black/40" />
+          </div>
+        )}
+
+        <AnimatePresence mode="popLayout" custom={leaveDirection} onExitComplete={() => setLeaveDirection(null)}>
+          <MovieCard
             key={currentMovie.id}
             movie={currentMovie}
             leaveDirection={leaveDirection}
@@ -835,17 +859,16 @@ const WatchlistScreen = () => {
   }, [matches, matchesReady]);
 
   const handleRoulette = () => {
-    const unwatched = matches.filter(m => !m.watched);
-    if (unwatched.length === 0) {
-      toast.error('Nincs több megnézetlen matchetek!', { icon: '🍿' });
+    // Only roll among unwatched matches whose movie metadata actually loaded, otherwise the
+    // button could silently do nothing when the winner's data failed to fetch.
+    const pool = matches.filter(m => !m.watched && moviesData[m.movieId]);
+    if (pool.length === 0) {
+      toast.error('Nincs megnézhető film a rulettben!', { icon: '🍿' });
       return;
     }
-    const winnerMatch = unwatched[Math.floor(Math.random() * unwatched.length)];
-    const winnerMovie = moviesData[winnerMatch.movieId];
-    if (winnerMovie) {
-      navigator.vibrate?.([100, 50, 100]);
-      setRouletteWinner(winnerMovie);
-    }
+    const winnerMatch = pool[Math.floor(Math.random() * pool.length)];
+    navigator.vibrate?.([100, 50, 100]);
+    setRouletteWinner(moviesData[winnerMatch.movieId]);
   };
 
   const displayMatches = [...matches].sort((a, b) => {
@@ -886,8 +909,9 @@ const WatchlistScreen = () => {
             className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${!showPartnerLikes ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}>
             <Heart size={14} fill={!showPartnerLikes ? "currentColor" : "none"} /> MATCH-EK
           </button>
-          <button onClick={() => { if (!profile?.partnerIds?.length) { toast.error('Csak csoporttaggal érhető el!'); return; } setShowPartnerLikes(true); }}
-            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'}`}>
+          <button onClick={() => { if (!profile?.partnerIds?.length) { toast.error('Csak összekötött taggal érhető el!'); return; } setShowPartnerLikes(true); }}
+            aria-disabled={!profile?.partnerIds?.length}
+            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'} ${!profile?.partnerIds?.length ? 'opacity-40' : ''}`}>
             <Sparkles size={14} fill={showPartnerLikes ? "currentColor" : "none"} /> PÁROM KEDVENCEI
           </button>
         </div>
@@ -1020,6 +1044,14 @@ const MovieDetailScreen = () => {
   const [showTrailer, setShowTrailer] = useState(false);
   const [liking, setLiking] = useState(false);
 
+  // Falls back to the discover screen when there's no history to go back to
+  // (e.g. cold-open via a shared/QR deep link) — otherwise navigate(-1) traps the user here.
+  const handleClose = () => {
+    const idx = (window.history.state && (window.history.state as any).idx) || 0;
+    if (idx > 0) navigate(-1);
+    else navigate('/');
+  };
+
   const handleLike = async () => {
     if (!user || !movie || liking) return;
     setLiking(true);
@@ -1035,19 +1067,22 @@ const MovieDetailScreen = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
     const loadMovie = async () => {
-      if (id) {
-        setLoading(true);
-        const [movieData, trailer] = await Promise.all([
-          getMovieById(id),
-          getMovieTrailer(id)
-        ]);
-        setMovie(movieData);
-        setTrailerUrl(trailer);
-        setLoading(false);
-      }
+      if (!id) return;
+      // Reset per-movie view state so a previous movie's trailer/poster can't leak across navigations.
+      setLoading(true);
+      setShowTrailer(false);
+      setMovie(null);
+      setTrailerUrl(null);
+      const [movieData, trailer] = await Promise.all([getMovieById(id), getMovieTrailer(id)]);
+      if (cancelled) return;
+      setMovie(movieData);
+      setTrailerUrl(trailer);
+      setLoading(false);
     };
     loadMovie();
+    return () => { cancelled = true; };
   }, [id]);
 
   if (loading) {
@@ -1066,7 +1101,7 @@ const MovieDetailScreen = () => {
           <X size={40} />
         </div>
         <h2 className="text-2xl font-black font-headline uppercase tracking-tight">Film nem található</h2>
-        <button onClick={() => navigate(-1)} className="text-primary font-headline font-black uppercase tracking-widest text-xs">Vissza</button>
+        <button onClick={handleClose} className="text-primary font-headline font-black uppercase tracking-widest text-xs">Vissza</button>
       </div>
     );
   }
@@ -1076,7 +1111,7 @@ const MovieDetailScreen = () => {
       {/* Header */}
       <header className="absolute top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-6 pointer-events-none">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleClose}
           aria-label="Bezárás"
           className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-white border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl"
         >
@@ -1193,6 +1228,8 @@ const ProfileScreen = () => {
   const [copied, setCopied] = useState(false);
 
   const partnerIds: string[] = profile?.partnerIds || [];
+  // Hide invites from someone already linked (e.g. a stale invite left by a reciprocal-delete race).
+  const pendingInvites = invites.filter((inv: any) => !partnerIds.includes(inv.from));
 
   const handleAddPartner = async () => {
     const trimmed = partnerIdInput.trim();
@@ -1237,15 +1274,23 @@ const ProfileScreen = () => {
             <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Csoport összekötés</h3>
             <button
               onClick={() => {
-                if ('Notification' in window) {
-                  Notification.requestPermission().then(async permission => {
-                    if (permission === 'granted') {
-                      const { registerForPush } = await import('./push');
-                      const ok = user ? await registerForPush(user.uid) : false;
-                      toast.success(ok ? 'Push értesítések bekapcsolva!' : 'Értesítések engedélyezve!');
-                    }
-                  });
+                if (!('Notification' in window)) {
+                  toast.error('Ez a böngésző nem támogatja az értesítéseket.');
+                  return;
                 }
+                if (Notification.permission === 'denied') {
+                  toast.error('Az értesítések le vannak tiltva – engedélyezd a böngésző beállításaiban.');
+                  return;
+                }
+                Notification.requestPermission().then(async permission => {
+                  if (permission === 'granted') {
+                    const { registerForPush } = await import('./push');
+                    const ok = user ? await registerForPush(user.uid) : false;
+                    toast.success(ok ? 'Push értesítések bekapcsolva!' : 'Értesítések engedélyezve!');
+                  } else if (permission === 'denied') {
+                    toast.error('Az értesítéseket letiltottad.');
+                  }
+                });
               }}
               className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 active:scale-95"
             >
@@ -1264,10 +1309,10 @@ const ProfileScreen = () => {
             </div>
 
             {/* Incoming connection requests */}
-            {invites.length > 0 && (
+            {pendingInvites.length > 0 && (
               <div className="space-y-2">
-                <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Bejövő meghívók ({invites.length})</p>
-                {invites.map((inv) => (
+                <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Bejövő meghívók ({pendingInvites.length})</p>
+                {pendingInvites.map((inv) => (
                   <div key={inv.id} className="flex items-center justify-between bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-3 min-w-0">
                       {inv.fromPhoto ? (
@@ -1300,7 +1345,11 @@ const ProfileScreen = () => {
                       </p>
                     </div>
                     <button
-                      onClick={() => removePartnerId(pid)}
+                      onClick={async () => {
+                        if (!window.confirm('Biztosan törlöd ezt a kapcsolatot?')) return;
+                        try { await removePartnerId(pid); toast.success('Kapcsolat törölve.'); }
+                        catch (e) { console.error(e); toast.error('Nem sikerült törölni.'); }
+                      }}
                       aria-label="Tag eltávolítása"
                       className="shrink-0 ml-3 w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:bg-error/20 hover:text-error transition-colors active:scale-90"
                     >
@@ -1357,9 +1406,10 @@ const ProfileScreen = () => {
 
               <button
                 onClick={() => {
-                  navigator.clipboard?.writeText(user?.uid || '').catch(() => {});
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
+                  if (!navigator.clipboard) { toast.error('A vágólap nem elérhető ebben a böngészőben.'); return; }
+                  navigator.clipboard.writeText(user?.uid || '')
+                    .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+                    .catch(() => toast.error('Nem sikerült másolni.'));
                 }}
                 className="w-full bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-4 rounded-2xl transition-colors flex items-center justify-between group active:scale-[0.98]"
               >

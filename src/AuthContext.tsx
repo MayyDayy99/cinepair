@@ -60,15 +60,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // Recipient accepts: links BOTH sides, then removes the invite.
+  // Recipient accepts: links BOTH sides, THEN removes the invite. If either link write fails
+  // (e.g. offline), the error propagates and the invite is kept so the user can retry — avoids a
+  // half-linked, unrecoverable state. arrayUnion makes retries idempotent.
   const acceptInvite = async (invite: any) => {
     if (!user || !invite || !invite.from) return;
     await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayUnion(invite.from) });
-    try {
-      await updateDoc(doc(db, 'users', invite.from), { partnerIds: arrayUnion(user.uid) });
-    } catch (e) {
-      console.warn('Reciprocal link on accept failed:', e);
-    }
+    await updateDoc(doc(db, 'users', invite.from), { partnerIds: arrayUnion(user.uid) });
     if (invite.id) await deleteDoc(doc(db, 'invites', invite.id));
   };
 

@@ -199,41 +199,43 @@ export async function getMovieTrailer(movieId: string): Promise<string | null> {
   }
 }
 
-export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerIds?: string[]) {
+export async function swipeMovie(userId: string, movieId: string, type: 'like' | 'dislike', partnerIds?: string[]): Promise<boolean> {
   const path = `users/${userId}/swipes`;
+
+  // 1) Persist the swipe. A failure here IS surfaced (the caller recovers the deck).
   try {
     const swipeRef = doc(collection(db, path), movieId);
-    await setDoc(swipeRef, {
-      userId,
-      movieId,
-      type,
-      timestamp: serverTimestamp()
-    });
-
-    if (type === 'like' && partnerIds && partnerIds.length > 0) {
-      let anyMatch = false;
-      for (const partnerId of partnerIds) {
-        const partnerSwipeRef = doc(db, `users/${partnerId}/swipes`, movieId);
-        const partnerSwipeSnap = await getDoc(partnerSwipeRef);
-
-        if (partnerSwipeSnap.exists() && partnerSwipeSnap.data().type === 'like') {
-          const sortedIds = [userId, partnerId].sort();
-          const matchRef = doc(db, 'matches', `${sortedIds[0]}_${sortedIds[1]}_${movieId}`);
-          await setDoc(matchRef, {
-            movieId,
-            userIds: [userId, partnerId],
-            matchedBy: userId,
-            timestamp: serverTimestamp()
-          });
-          anyMatch = true;
-        }
-      }
-      return anyMatch;
-    }
-    return false;
+    await setDoc(swipeRef, { userId, movieId, type, timestamp: serverTimestamp() });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    return false; // unreachable (handleFirestoreError throws) — keeps the return type honest
   }
+
+  if (type !== 'like' || !partnerIds || partnerIds.length === 0) return false;
+
+  // 2) Match detection is best-effort: the like is already saved, and the onSwipeCreated Cloud
+  //    Function creates matches server-side as a backstop, so a failure here must NOT be reported
+  //    as a failed swipe.
+  let anyMatch = false;
+  try {
+    for (const partnerId of partnerIds) {
+      const partnerSwipeSnap = await getDoc(doc(db, `users/${partnerId}/swipes`, movieId));
+      if (partnerSwipeSnap.exists() && partnerSwipeSnap.data().type === 'like') {
+        const sortedIds = [userId, partnerId].sort();
+        const matchRef = doc(db, 'matches', `${sortedIds[0]}_${sortedIds[1]}_${movieId}`);
+        await setDoc(matchRef, {
+          movieId,
+          userIds: [userId, partnerId],
+          matchedBy: userId,
+          timestamp: serverTimestamp(),
+        });
+        anyMatch = true;
+      }
+    }
+  } catch (error) {
+    console.warn('Match detection failed (the swipe was saved):', error);
+  }
+  return anyMatch;
 }
 
 export async function undoSwipe(userId: string, movieId: string) {
