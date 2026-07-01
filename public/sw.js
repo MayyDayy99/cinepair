@@ -1,6 +1,36 @@
-/* CinePair service worker — enables installability + basic offline (network-first),
-   and carries Web Push handlers so OS notifications work even when the app is closed
-   (requires a push backend / FCM to actually deliver). */
+/* CinePair service worker:
+   - installable + offline support (network-first caching)
+   - Firebase Cloud Messaging background handler (data-only -> exactly one notification) */
+
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+// Public Firebase web config (safe to ship; access is governed by Firestore rules).
+firebase.initializeApp({
+  apiKey: 'AIzaSyC8E5q9agK_utY_GZzvt9NIvIO0b1HV2Gk',
+  authDomain: 'cinepair-31543.firebaseapp.com',
+  projectId: 'cinepair-31543',
+  messagingSenderId: '113009325170',
+  appId: '1:113009325170:web:76cb08f667a371ddd8feeb',
+});
+
+try {
+  const messaging = firebase.messaging();
+  // Backend sends DATA-ONLY messages, so we render exactly one notification here
+  // (a `notification` payload would auto-display AND fire this -> duplicates).
+  messaging.onBackgroundMessage((payload) => {
+    const d = (payload && payload.data) || {};
+    self.registration.showNotification(d.title || 'CinePair', {
+      body: d.body || 'Új találat! 🍿',
+      icon: d.icon || self.registration.scope + 'icon-512.png',
+      badge: self.registration.scope + 'icon-512.png',
+      data: { link: d.link || self.registration.scope + '#/watchlist' },
+    });
+  });
+} catch (e) {
+  // messaging unsupported in this browser — offline caching still works.
+}
+
 const CACHE = 'cinepair-v1';
 
 self.addEventListener('install', () => {
@@ -17,8 +47,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network-first for same-origin GETs: always fresh when online, cached copy when offline.
-// (Network-first avoids serving a stale app shell after a new deploy.)
+// Network-first for same-origin GETs: always fresh online, cached copy offline.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -44,33 +73,18 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-self.addEventListener('push', (event) => {
-  let data = {};
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch (_) {
-    data = {};
-  }
-  const title = data.title || 'CinePair';
-  const body = data.body || 'Új találat! 🍿';
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon: self.registration.scope + 'icon-512.png',
-      badge: self.registration.scope + 'icon-512.png',
-      data: data.url || self.registration.scope,
-    })
-  );
-});
-
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification.data) || self.registration.scope;
+  const link = (event.notification.data && event.notification.data.link) || self.registration.scope;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((c) => 'focus' in c);
-      if (existing) return existing.focus();
-      return self.clients.openWindow(target);
+      if (existing) {
+        existing.focus();
+        if ('navigate' in existing) existing.navigate(link).catch(() => {});
+        return;
+      }
+      return self.clients.openWindow(link);
     })
   );
 });

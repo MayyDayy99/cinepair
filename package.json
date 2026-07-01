@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:rules": "firebase emulators:exec --only firestore --project cinepair-rules-test \"node --test test/firestore.rules.test.mjs\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -25,8 +26,10 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "firebase-tools": "^15.22.4",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

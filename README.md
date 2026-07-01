@@ -45,6 +45,37 @@ A **CinePair** egy modern, reszponzív PWA (Progressive Web App) alkalmazás, am
     npm run dev
     ```
 
+## 🔔 Push értesítések (FCM) & Cloud Functions
+
+A csukott appnál is megjelenő push-hoz Firebase Cloud Messaging + egy Cloud Function kell:
+
+1. **VAPID kulcs:** Firebase Console → Project settings → Cloud Messaging → *Web Push
+   certificates* → másold a kulcspár publikus kulcsát a `.env`-be:
+   `VITE_FIREBASE_VAPID_KEY="..."`. Enélkül a push regisztráció csendben kimarad.
+2. **Function deploy** (Blaze csomag szükséges):
+   ```bash
+   cd functions && npm install && cd ..
+   firebase functions:secrets:set TMDB_API_KEY   # opcionális, szép filmcímekhez
+   firebase deploy --only functions
+   ```
+   A `onMatchCreated` trigger match létrejöttekor push-t küld a partnernek (data-only üzenet →
+   pontosan egy értesítés; érvénytelen tokeneket takarít).
+3. A kliens a Profil → *Értesítések* gombnál kér engedélyt és regisztrálja a token-t.
+
+## 🔒 Firestore szabályok tesztelése
+
+A biztonsági szabályokra emulátoros tesztcsomag tartozik (Java szükséges):
+
+```bash
+npm run test:rules
+```
+
+## 🚀 Deploy
+
+- **Frontend:** a `main`-re pusholva GitHub Pages (lásd `.github/workflows/deploy.yml`).
+- **Szabályok:** `firebase deploy --only firestore:rules` (a `.firebaserc` a `cinepair-31543`
+  projektre mutat). Az admin-jogot **custom claim** (`admin: true`) adja, nem a user-dokumentum.
+
 ## 📱 Használat
 
 1. Lépj be a Google fiókoddal.

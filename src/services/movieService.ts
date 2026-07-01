@@ -303,13 +303,3 @@ export async function getPartnerLikedMovies(partnerIds: string[], myUserId: stri
   }
 }
 
-export async function seedMovies() {
-  const path = 'movies';
-  try {
-    for (const movie of MOCK_MOVIES) {
-      await setDoc(doc(db, path, movie.id), movie);
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}

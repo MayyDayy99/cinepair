@@ -107,6 +107,11 @@ service cloud.firestore {
       allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || onlyAddsSelfToPartners();
     }
 
+    // FCM device tokens for push — strictly owner-only (a Cloud Function reads them via admin).
+    match /users/{userId}/fcmTokens/{token} {
+      allow read, write: if isOwner(userId);
+    }
+
     match /users/{userId}/swipes/{swipeId} {
       // A reader may see a partner's swipes only if the partner is in the reader's partnerIds.
       allow read: if isOwner(userId) || readerLinkedTo(userId);

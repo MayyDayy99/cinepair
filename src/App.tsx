@@ -45,7 +45,7 @@ const Navbar = () => {
       </Link>
       <div className="w-8 flex items-center justify-end">
         {!window.matchMedia('(display-mode: standalone)').matches && (
-          <button onClick={toggleFullscreen} title="Teljes képernyő" className="text-on-surface/40 hover:text-white transition-colors">
+          <button onClick={toggleFullscreen} title="Teljes képernyő" aria-label="Teljes képernyő váltása" className="text-on-surface/40 hover:text-white transition-colors">
             {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
           </button>
         )}
@@ -194,7 +194,7 @@ const LoginScreen = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0a] relative overflow-hidden font-sans">
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+      <div aria-hidden="true" className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-red-600/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse [animation-duration:4s]" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-orange-500/20 blur-[120px] rounded-full mix-blend-screen opacity-60 animate-pulse [animation-duration:6s] [animation-delay:2s]" />
         <motion.div 
@@ -450,8 +450,9 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
         </div>
       </div>
       
-      <button 
+      <button
         onClick={(e) => { e.stopPropagation(); onInfo(); }}
+        aria-label="Film részletei"
         className="absolute top-8 right-8 w-12 h-12 rounded-full bg-black/30 backdrop-blur-xl flex items-center justify-center text-white pointer-events-auto border border-white/10 hover:bg-black/50 transition-colors"
       >
         <Info size={24} />
@@ -656,7 +657,7 @@ const SwipeScreen = () => {
 
   return (
     <div className="relative h-full w-full flex flex-col items-center px-3 sm:px-6 pb-2 overflow-hidden">
-      <div id="swipe-glow-overlay" className="absolute inset-0 z-0 pointer-events-none transition-colors duration-300" />
+      <div id="swipe-glow-overlay" aria-hidden="true" className="absolute inset-0 z-0 pointer-events-none transition-colors duration-300" />
       
       <AnimatePresence>
         {showMatch && (
@@ -664,6 +665,9 @@ const SwipeScreen = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Új találat"
             className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-center p-8 text-center"
           >
             <div className="absolute inset-0 z-0">
@@ -764,17 +768,17 @@ const SwipeScreen = () => {
       </div>
 
       <div className="mt-2 sm:mt-4 flex items-center justify-center gap-6 shrink-0">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('dislike')} title="Nem tetszik"
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('dislike')} title="Nem tetszik" aria-label="Nem tetszik"
           className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-error/20 transition-colors group">
           <X size={28} className="text-error/60 group-hover:text-error transition-all" />
         </motion.button>
         {lastSwipe && (
-          <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} whileTap={{ scale: 0.9 }} onClick={handleUndo} title="Vissza"
+          <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} whileTap={{ scale: 0.9 }} onClick={handleUndo} title="Vissza" aria-label="Utolsó húzás visszavonása"
             className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10 shadow-xl hover:bg-white/10 transition-colors">
             <Undo2 size={20} className="text-white/50" />
           </motion.button>
         )}
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('like')} title="Tetszik"
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleSwipe('like')} title="Tetszik" aria-label="Tetszik"
           className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-surface-container-highest flex items-center justify-center border border-white/5 shadow-2xl hover:bg-secondary/20 transition-colors group">
           <Heart size={28} className="text-secondary/60 group-hover:text-secondary transition-all" fill="currentColor" />
         </motion.button>
@@ -867,7 +871,7 @@ const WatchlistScreen = () => {
             <h1 className="text-4xl font-black font-headline tracking-tight uppercase">Watchlist</h1>
           </div>
           <div className="flex items-center gap-3">
-            <motion.button whileTap={{ scale: 0.9 }} onClick={handleRoulette}
+            <motion.button whileTap={{ scale: 0.9 }} onClick={handleRoulette} aria-label="Véletlen film választása (rulett)" title="Rulett"
               className="w-10 h-10 sm:w-12 sm:h-12 bg-primary text-black rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
               <Shuffle size={18} />
             </motion.button>
@@ -907,7 +911,7 @@ const WatchlistScreen = () => {
                 {partnerLikedMovies.map((movie, idx) => (
                   <motion.div key={movie.id} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: idx * 0.05 }}
                     className="group relative aspect-[2/3] rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
-                    <img src={movie.posterUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" referrerPolicy="no-referrer" />
+                    <img src={movie.posterUrl} alt={`${movie.title} poszter`} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" referrerPolicy="no-referrer" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
                     <div className="absolute top-3 right-3">
                       <button onClick={async (e) => {
@@ -988,10 +992,10 @@ const WatchlistScreen = () => {
 
       <AnimatePresence>
         {rouletteWinner && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 text-center">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} role="dialog" aria-modal="true" aria-label="Rulett – véletlen film" className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 text-center">
             <p className="text-primary font-headline font-black uppercase tracking-[0.4em] text-xs mb-8">Az sors választott:</p>
             <motion.div initial={{ scale: 0.8, rotateY: 180 }} animate={{ scale: 1, rotateY: 0 }} className="relative w-full max-w-[280px] aspect-[2/3] rounded-[2rem] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.8)] border-2 border-primary/30 mb-12">
-              <img src={rouletteWinner.posterUrl} className="w-full h-full object-cover" />
+              <img src={rouletteWinner.posterUrl} alt={`${rouletteWinner.title} poszter`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
               <div className="absolute bottom-0 p-8 text-left"><h2 className="font-headline font-black text-3xl text-white uppercase leading-none">{rouletteWinner.title}</h2></div>
             </motion.div>
@@ -1071,8 +1075,9 @@ const MovieDetailScreen = () => {
     <div className="min-h-full w-full relative pb-10">
       {/* Header */}
       <header className="absolute top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-6 pointer-events-none">
-        <button 
-          onClick={() => navigate(-1)} 
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Bezárás"
           className="pointer-events-auto w-12 h-12 flex items-center justify-center bg-black/40 backdrop-blur-xl rounded-full text-white border border-white/10 hover:bg-black/60 transition-all active:scale-90 shadow-2xl"
         >
           <X size={24} />
@@ -1227,8 +1232,12 @@ const ProfileScreen = () => {
             <button
               onClick={() => {
                 if ('Notification' in window) {
-                  Notification.requestPermission().then(permission => {
-                    if (permission === 'granted') toast.success('Értesítések engedélyezve!');
+                  Notification.requestPermission().then(async permission => {
+                    if (permission === 'granted') {
+                      const { registerForPush } = await import('./push');
+                      const ok = user ? await registerForPush(user.uid) : false;
+                      toast.success(ok ? 'Push értesítések bekapcsolva!' : 'Értesítések engedélyezve!');
+                    }
                   });
                 }
               }}
@@ -1261,6 +1270,7 @@ const ProfileScreen = () => {
                     </div>
                     <button
                       onClick={() => removePartnerId(pid)}
+                      aria-label="Tag eltávolítása"
                       className="shrink-0 ml-3 w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:bg-error/20 hover:text-error transition-colors active:scale-90"
                     >
                       <X size={14} />
@@ -1409,6 +1419,14 @@ const AppContent = () => {
     }
     prevMatchCountRef.current = matches.length;
   }, [matches, matchesReady, user, navigate]);
+
+  // If notifications are already granted, (re)register this device's push token on login.
+  // Lazy-import so the FCM/messaging SDK stays out of the initial bundle.
+  useEffect(() => {
+    if (user && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      import('./push').then(({ registerForPush }) => registerForPush(user.uid)).catch(() => {});
+    }
+  }, [user]);
 
   useEffect(() => {
     let partnerId = null;

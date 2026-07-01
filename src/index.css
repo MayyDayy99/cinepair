@@ -28,9 +28,16 @@
 @layer base {
   body {
     @apply bg-background text-on-surface font-body overflow-hidden;
-    background-image: 
+    background-image:
       radial-gradient(circle at 50% -20%, #f5c51815 0%, transparent 50%),
       radial-gradient(circle at 0% 100%, #00ff8808 0%, transparent 40%);
+  }
+
+  /* Visible keyboard-focus indicator (several controls use focus:outline-none for mouse use). */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
