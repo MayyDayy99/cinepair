@@ -58,9 +58,11 @@ A csukott appnál is megjelenő push-hoz Firebase Cloud Messaging + egy Cloud Fu
    firebase functions:secrets:set TMDB_API_KEY   # opcionális, szép filmcímekhez
    firebase deploy --only functions
    ```
-   A `onMatchCreated` trigger match létrejöttekor push-t küld a partnernek (data-only üzenet →
-   pontosan egy értesítés; érvénytelen tokeneket takarít).
+   A functions három triggert tartalmaz: `onMatchCreated` (push a partnernek), `onSwipeCreated`
+   (szerver-oldali match-létrehozás), és `tmdb` (TMDB-proxy, hogy a kulcs ne a bundle-ben legyen).
 3. A kliens a Profil → *Értesítések* gombnál kér engedélyt és regisztrálja a token-t.
+4. **Opcionális – TMDB-proxy:** deploy után állítsd a `.env`-ben a `VITE_TMDB_PROXY_URL`-t a `tmdb`
+   függvény URL-jére, a `VITE_TMDB_API_KEY`-t pedig hagyd üresen, hogy a kulcs ne kerüljön a kliensbe.
 
 ## 🔒 Firestore szabályok tesztelése
 
@@ -79,8 +81,9 @@ npm run test:rules
 ## 📱 Használat
 
 1. Lépj be a Google fiókoddal.
-2. Másold ki az azonosítódat a **Profil** menüben.
-3. Küldd el a párodnak, ő pedig írja be a saját profiljánál a "Partner összekötés" mezőbe.
+2. A **Profil** menüben küldj **meghívót** a párodnak (a User ID-jével vagy a közös QR-kóddal).
+3. A párod a saját Profiljában a **Bejövő meghívók** alatt **Elfogadja** — csak ekkor jön létre a
+   kapcsolat (elfogadásig senki nem látja a másik lájkjait).
 4. Kezdjetek el swipe-olni a főoldalon!
 
 ---

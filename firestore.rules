@@ -45,6 +45,16 @@ service cloud.firestore {
              (!('partnerId' in data) || (data.partnerId is string));
     }
 
+    function isValidInvite(data) {
+      return data.keys().hasOnly(['from', 'to', 'fromName', 'fromPhoto', 'status', 'createdAt']) &&
+             data.keys().hasAll(['from', 'to', 'status']) &&
+             data.from == request.auth.uid &&
+             data.to is string && data.to.size() > 0 && data.to != request.auth.uid &&
+             data.status == 'pending' &&
+             (!('fromName' in data) || data.fromName is string) &&
+             (!('fromPhoto' in data) || data.fromPhoto is string);
+    }
+
     function isValidSwipe(data) {
       return data.keys().hasOnly(['userId', 'movieId', 'type', 'timestamp']) &&
              data.keys().hasAll(['userId', 'movieId', 'type', 'timestamp']) &&
@@ -117,6 +127,19 @@ service cloud.firestore {
       allow read: if isOwner(userId) || readerLinkedTo(userId);
       allow create: if isOwner(userId) && isValidSwipe(request.resource.data);
       allow update, delete: if isOwner(userId);
+    }
+
+    // Consent-based pairing: an invite grants NO access; only its acceptance links both users.
+    match /invites/{inviteId} {
+      allow read: if isAuthenticated() &&
+                     (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if isAuthenticated() && isValidInvite(request.resource.data);
+      // Only the recipient may accept/decline, and only by changing `status`.
+      allow update: if isAuthenticated() && resource.data.to == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+                       request.resource.data.status in ['accepted', 'declined'];
+      allow delete: if isAuthenticated() &&
+                       (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
     }
 
     match /matches/{matchId} {

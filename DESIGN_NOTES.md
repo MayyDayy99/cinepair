@@ -4,7 +4,11 @@ Ez a dokumentum a *kódszintű hibákon túli*, mélyebb tervezési/architektur�
 gyűjti össze, prioritás szerint. Nem mind hiba — több tudatos kompromisszum vagy jövőbeli
 irány. A konkrét bugokat a korábbi audit és a commitok már lefedték.
 
-## 1. Hozzájárulás nélküli párosítás (trust model) — MAGAS
+## 1. Hozzájárulás nélküli párosítás (trust model) — MAGAS · ✅ MEGVALÓSÍTVA
+> Elkészült: `invites` kollekció + elfogadás-alapú flow. A meghívás/linkelt-link csak *pending*
+> kérést hoz létre (semmilyen hozzáférést nem ad); a címzett a Profilban Elfogadja/Elutasítja,
+> és csak elfogadáskor jön létre a kölcsönös `partnerIds`. A szabályok emulátorral tesztelve.
+
 Partner felvétele uid-del vagy QR/link beolvasásával **azonnal, elfogadás nélkül** kölcsönös
 hozzáférést ad: aki megszerzi az uid-edet vagy a meghívó linkedet, felveheti magát, és ezzel
 elolvashatja, mely filmeket lájkoltad (a swipes-olvasási szabály a linkeltséget nézi).
@@ -13,7 +17,13 @@ elolvashatja, mely filmeket lájkoltad (a swipes-olvasási szabály a linkeltsé
   amit a címzett jóváhagy; csak ezután íródik be a kölcsönös `partnerIds`. Mutasd: „X szeretne
   összekötni veled", Elfogadom / Elutasítom. Egy „kit távolítottam el / ki lát engem" nézet is kell.
 
-## 2. Kliens-oldali match-létrehozás — MAGAS
+## 2. Kliens-oldali match-létrehozás — MAGAS · ✅ RÉSZBEN
+> Elkészült: `onSwipeCreated` Cloud Function szerver-oldalon is létrehozza a matchet (redundáns
+> biztonsági háló a már megszigorított, tesztelt kliens-út mellett). A create szabály szándékosan
+> nyitva marad a *hardened* kliens-útnak, hogy a matchelés Function nélkül is működjön (offline-
+> reziliencia). Teljes bezárás (`create: if false`, csak Function ír) egy jövőbeli lépés, ha a
+> Function prod-ban bizonyított.
+
 A matchek létrehozása kliensből történik (minden fél maga írja, párosával). A szigorított
 szabályok ezt már biztonságossá teszik, de továbbra is racy és a kliensben van az üzleti logika.
 - **Javaslat:** a match-létrehozást tedd **Cloud Functionbe** (swipe-write trigger): a szerver
@@ -28,7 +38,11 @@ szintjén). Aki több ezer filmet végigpörget, annál ez egyre lassabb és dr�
   vagy a discover lekérdezés szerver-oldali szűrése. A `getUserSwipes`-t emeld ki a rekurzióból
   (egyszer kérd le oldalbetöltésenként, ne szintenként).
 
-## 4. TMDB API-kulcs a kliens-bundle-ben — KÖZEPES
+## 4. TMDB API-kulcs a kliens-bundle-ben — KÖZEPES · ✅ MEGVALÓSÍTVA (opt-in)
+> Elkészült: `tmdb` Cloud Function proxy (a kulcs szerver-oldali secret). A kliens a
+> `VITE_TMDB_PROXY_URL` beállításával a proxyn át hív; enélkül a régi, direkt hívás a fallback.
+> A kulcs teljes eltávolításához a proxy-URL-t állítsd be, a `VITE_TMDB_API_KEY`-t pedig hagyd üresen.
+
 A `VITE_TMDB_API_KEY` beépül a JS-be, kiszedhető és visszaélésre / rate-limit kimerítésre
 használható.
 - **Javaslat:** proxyzd a TMDB-hívásokat egy Cloud Function / serverless végponton át (a kulcs

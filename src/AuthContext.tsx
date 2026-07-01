@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove, deleteField } from 'firebase/firestore';
+import { doc, collection, query, where, onSnapshot, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, deleteField, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { subscribeToMatches } from './services/movieService';
 
@@ -9,9 +9,12 @@ interface AuthContextType {
   profile: any | null;
   matches: any[];
   matchesReady: boolean;
+  invites: any[];
   loading: boolean;
   isAuthReady: boolean;
-  addPartnerId: (partnerId: string) => Promise<void>;
+  sendInvite: (toUid: string) => Promise<void>;
+  acceptInvite: (invite: any) => Promise<void>;
+  declineInvite: (inviteId: string) => Promise<void>;
   removePartnerId: (partnerId: string) => Promise<void>;
 }
 
@@ -20,9 +23,12 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   matches: [],
   matchesReady: false,
+  invites: [],
   loading: true,
   isAuthReady: false,
-  addPartnerId: async () => {},
+  sendInvite: async () => {},
+  acceptInvite: async () => {},
+  declineInvite: async () => {},
   removePartnerId: async () => {},
 });
 
@@ -34,20 +40,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [matches, setMatches] = useState<any[]>([]);
   // Distinguishes "no matches yet, still loading" from "first snapshot received (genuinely 0/N)".
   const [matchesReady, setMatchesReady] = useState(false);
+  const [invites, setInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  const addPartnerId = async (partnerId: string) => {
-    if (!user || !partnerId || partnerId === user.uid) return;
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, { partnerIds: arrayUnion(partnerId) });
-    // Best-effort reciprocal link so discovery/matching works in BOTH directions.
-    // (Rules allow appending only our own uid to another user's partnerIds.)
+  // Send a pending connection request. Grants NO access until the recipient accepts.
+  const sendInvite = async (toUid: string) => {
+    const to = (toUid || '').trim();
+    if (!user || !to || to === user.uid) return;
+    const partnerIds: string[] = (profile && profile.partnerIds) || [];
+    if (partnerIds.includes(to)) return; // already linked
+    await setDoc(doc(db, 'invites', `${user.uid}_${to}`), {
+      from: user.uid,
+      to,
+      fromName: profile?.displayName || 'Valaki',
+      fromPhoto: profile?.photoURL || '',
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+  };
+
+  // Recipient accepts: links BOTH sides, then removes the invite.
+  const acceptInvite = async (invite: any) => {
+    if (!user || !invite || !invite.from) return;
+    await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayUnion(invite.from) });
     try {
-      await updateDoc(doc(db, 'users', partnerId), { partnerIds: arrayUnion(user.uid) });
+      await updateDoc(doc(db, 'users', invite.from), { partnerIds: arrayUnion(user.uid) });
     } catch (e) {
-      console.warn('Reciprocal partner link failed (partner doc may not exist yet):', e);
+      console.warn('Reciprocal link on accept failed:', e);
     }
+    if (invite.id) await deleteDoc(doc(db, 'invites', invite.id));
+  };
+
+  const declineInvite = async (inviteId: string) => {
+    if (!inviteId) return;
+    await deleteDoc(doc(db, 'invites', inviteId));
   };
 
   const removePartnerId = async (partnerId: string) => {
@@ -139,8 +166,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsub();
   }, [user]);
 
+  // Incoming pending connection requests addressed to me.
+  useEffect(() => {
+    if (!user) {
+      setInvites([]);
+      return;
+    }
+    const q = query(collection(db, 'invites'), where('to', '==', user.uid));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setInvites(
+          snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .filter((i: any) => i.status === 'pending')
+        );
+      },
+      (error) => console.error('Invites subscription error:', error)
+    );
+    return () => unsub();
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, profile, matches, matchesReady, loading, isAuthReady, addPartnerId, removePartnerId }}>
+    <AuthContext.Provider
+      value={{ user, profile, matches, matchesReady, invites, loading, isAuthReady, sendInvite, acceptInvite, declineInvite, removePartnerId }}
+    >
       {children}
     </AuthContext.Provider>
   );

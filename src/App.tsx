@@ -1187,7 +1187,7 @@ const MovieDetailScreen = () => {
 };
 
 const ProfileScreen = () => {
-  const { profile, user, addPartnerId, removePartnerId } = useAuth();
+  const { profile, user, sendInvite, acceptInvite, declineInvite, invites, removePartnerId } = useAuth();
   const [partnerIdInput, setPartnerIdInput] = useState('');
   const [showQr, setShowQr] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1197,8 +1197,14 @@ const ProfileScreen = () => {
   const handleAddPartner = async () => {
     const trimmed = partnerIdInput.trim();
     if (!trimmed || trimmed === user?.uid || partnerIds.includes(trimmed)) return;
-    await addPartnerId(trimmed);
-    setPartnerIdInput('');
+    try {
+      await sendInvite(trimmed);
+      toast.success('Meghívó elküldve! A másik fél a Profilban fogadhatja el.');
+      setPartnerIdInput('');
+    } catch (e) {
+      console.error('sendInvite failed:', e);
+      toast.error('Nem sikerült elküldeni a meghívót.');
+    }
   };
 
   const myPartnerUrl = `https://mayydayy99.github.io/cinepair/#/?partner=${user?.uid || ''}`;
@@ -1257,6 +1263,31 @@ const ProfileScreen = () => {
               </div>
             </div>
 
+            {/* Incoming connection requests */}
+            {invites.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Bejövő meghívók ({invites.length})</p>
+                {invites.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {inv.fromPhoto ? (
+                        <img src={inv.fromPhoto} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center shrink-0"><UserIcon size={16} className="text-secondary" /></div>
+                      )}
+                      <p className="text-xs font-bold text-white/80 truncate">{inv.fromName || 'Ismeretlen'}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={async () => { try { await acceptInvite(inv); toast.success('Összekötve! 🎬'); } catch (e) { console.error(e); toast.error('Nem sikerült elfogadni.'); } }}
+                        aria-label="Meghívó elfogadása" title="Elfogadás" className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-black active:scale-90 transition-transform"><Check size={16} /></button>
+                      <button onClick={async () => { try { await declineInvite(inv.id); } catch (e) { console.error(e); } }}
+                        aria-label="Meghívó elutasítása" title="Elutasítás" className="w-8 h-8 flex items-center justify-center rounded-full bg-error/20 text-error active:scale-90 transition-transform"><X size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Connected partners list */}
             {partnerIds.length > 0 && (
               <div className="space-y-2">
@@ -1295,7 +1326,7 @@ const ProfileScreen = () => {
                 disabled={!partnerIdInput.trim()}
                 className="w-full bg-primary text-black font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <UserPlus size={18} /> Hozzáadás
+                <UserPlus size={18} /> Meghívás
               </button>
             </div>
 
@@ -1368,7 +1399,7 @@ const ProfileScreen = () => {
 };
 
 const AppContent = () => {
-  const { user, loading, addPartnerId, matches, matchesReady } = useAuth();
+  const { user, loading, sendInvite, matches, matchesReady } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
@@ -1440,8 +1471,11 @@ const AppContent = () => {
       partnerId = params.get('partner');
     }
 
-    if (user && partnerId) {
-      addPartnerId(partnerId).then(() => {
+    if (user && partnerId && partnerId !== user.uid) {
+      // Opening someone's invite link SENDS them a connection request (they must accept) —
+      // no access is granted until then.
+      sendInvite(partnerId).then(() => {
+        toast.success('Meghívó elküldve! Fogadja el a másik fél.');
         const url = new URL(window.location.href);
         if (url.hash.includes('?')) {
           const parts = url.hash.split('?');
@@ -1451,9 +1485,9 @@ const AppContent = () => {
           const newHash = parts[0] + (newParams ? '?' + newParams : '');
           window.history.replaceState({}, '', url.pathname + url.search + newHash);
         }
-      });
+      }).catch((e) => console.warn('sendInvite from link failed:', e));
     }
-  }, [user, location, addPartnerId]);
+  }, [user, location, sendInvite]);
 
   if (loading) {
     return (

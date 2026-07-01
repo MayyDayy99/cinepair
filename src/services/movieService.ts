@@ -45,18 +45,29 @@ export const MOCK_MOVIES: Movie[] = [
   }
 ];
 
-const TMDB_API_KEY = (import.meta as any).env.VITE_TMDB_API_KEY;
+const env = (import.meta as any).env || {};
+const TMDB_API_KEY = env.VITE_TMDB_API_KEY;
+// When set, TMDB requests are routed through our Cloud Function proxy so the API key never
+// ships in the client bundle. Falls back to direct TMDB (with the client key) when unset.
+const TMDB_PROXY: string = env.VITE_TMDB_PROXY_URL || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+const tmdbAvailable = !!TMDB_API_KEY || !!TMDB_PROXY;
+
+// Returns a URL prefix ending in `&` so callers can append `key=value&...` uniformly.
+function tmdbBase(path: string): string {
+  if (TMDB_PROXY) return `${TMDB_PROXY}?path=${encodeURIComponent(path)}&`;
+  return `${TMDB_BASE_URL}${path}?api_key=${TMDB_API_KEY}&`;
+}
 
 // --- Genre Map Cache ---
 let genreMap: Record<number, string> = {};
 let genreMapLoaded = false;
 
 async function loadGenreMap(): Promise<void> {
-  if (genreMapLoaded || !TMDB_API_KEY) return;
+  if (genreMapLoaded || !tmdbAvailable) return;
   try {
-    const response = await fetch(`${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    const response = await fetch(`${tmdbBase('/genre/movie/list')}language=hu-HU`);
     if (!response.ok) {
       console.warn(`TMDB genre list failed: HTTP ${response.status}`);
       return;
@@ -94,15 +105,15 @@ export interface MovieFetchOptions {
 export async function getMovies(options: MovieFetchOptions = {}): Promise<Movie[]> {
   const { page = 1, year, genreId } = options;
 
-  if (!TMDB_API_KEY) {
-    console.error("TMDB API Key missing!");
+  if (!tmdbAvailable) {
+    console.error("TMDB not configured (no API key or proxy URL)!");
     return MOCK_MOVIES;
   }
 
   await loadGenreMap();
 
   try {
-    let url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&language=hu-HU&sort_by=popularity.desc&page=${page}&vote_count.gte=100`;
+    let url = `${tmdbBase('/discover/movie')}language=hu-HU&sort_by=popularity.desc&page=${page}&vote_count.gte=100`;
     
     if (year) {
       url += `&primary_release_year=${year}`;
@@ -141,9 +152,9 @@ export async function getMovies(options: MovieFetchOptions = {}): Promise<Movie[
 }
 
 export async function getMovieById(movieId: string): Promise<Movie | null> {
-  if (!TMDB_API_KEY) return null;
+  if (!tmdbAvailable) return null;
   try {
-    const response = await fetch(`${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    const response = await fetch(`${tmdbBase('/movie/' + movieId)}language=hu-HU`);
     if (!response.ok) {
       console.warn(`TMDB movie ${movieId} failed: HTTP ${response.status}`);
       return null;
@@ -166,9 +177,9 @@ export async function getMovieById(movieId: string): Promise<Movie | null> {
 }
 
 export async function getMovieTrailer(movieId: string): Promise<string | null> {
-  if (!TMDB_API_KEY) return null;
+  if (!tmdbAvailable) return null;
   try {
-    const response = await fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=hu-HU`);
+    const response = await fetch(`${tmdbBase('/movie/' + movieId + '/videos')}language=hu-HU`);
     if (!response.ok) {
       console.warn(`TMDB trailer ${movieId} failed: HTTP ${response.status}`);
       return null;
@@ -177,7 +188,7 @@ export async function getMovieTrailer(movieId: string): Promise<string | null> {
     let trailer = data.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');
     if (!trailer) {
       // Fallback to English
-      const enResponse = await fetch(`${TMDB_BASE_URL}/movie/${movieId}/videos?api_key=${TMDB_API_KEY}&language=en-US`);
+      const enResponse = await fetch(`${tmdbBase('/movie/' + movieId + '/videos')}language=en-US`);
       if (!enResponse.ok) return null;
       const enData = await enResponse.json();
       trailer = enData.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');

@@ -184,6 +184,49 @@ test('a non-member cannot read a match', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// invites: consent-based pairing
+// ---------------------------------------------------------------------------
+test('user can create a pending invite to another user, but not to self', async () => {
+  const aDb = testEnv.authenticatedContext(A).firestore();
+  await assertSucceeds(setDoc(doc(aDb, 'invites', `${A}_${B}`), {
+    from: A, to: B, fromName: 'A', fromPhoto: '', status: 'pending', createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(aDb, 'invites', `${A}_${A}`), {
+    from: A, to: A, status: 'pending', createdAt: serverTimestamp(),
+  }));
+});
+
+test('invite create with a spoofed `from` is rejected', async () => {
+  const aDb = testEnv.authenticatedContext(A).firestore();
+  await assertFails(setDoc(doc(aDb, 'invites', `${B}_${C}`), {
+    from: B, to: C, status: 'pending', createdAt: serverTimestamp(),
+  }));
+});
+
+test('invite readable by sender and recipient only', async () => {
+  await seed(async (db) => {
+    await setDoc(doc(db, 'invites', `${A}_${B}`), { from: A, to: B, status: 'pending', createdAt: serverTimestamp() });
+  });
+  await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(A).firestore(), 'invites', `${A}_${B}`)));
+  await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(B).firestore(), 'invites', `${A}_${B}`)));
+  await assertFails(getDoc(doc(testEnv.authenticatedContext(C).firestore(), 'invites', `${A}_${B}`)));
+});
+
+test('only recipient may change status; either party may delete', async () => {
+  await seed(async (db) => {
+    await setDoc(doc(db, 'invites', `${A}_${B}`), { from: A, to: B, status: 'pending', createdAt: serverTimestamp() });
+  });
+  // sender A cannot accept their own invite
+  await assertFails(updateDoc(doc(testEnv.authenticatedContext(A).firestore(), 'invites', `${A}_${B}`), { status: 'accepted' }));
+  // recipient B accepts
+  await assertSucceeds(updateDoc(doc(testEnv.authenticatedContext(B).firestore(), 'invites', `${A}_${B}`), { status: 'accepted' }));
+  // stranger C cannot delete
+  await assertFails(deleteDoc(doc(testEnv.authenticatedContext(C).firestore(), 'invites', `${A}_${B}`)));
+  // sender A can delete
+  await assertSucceeds(deleteDoc(doc(testEnv.authenticatedContext(A).firestore(), 'invites', `${A}_${B}`)));
+});
+
+// ---------------------------------------------------------------------------
 // fcmTokens: owner-only
 // ---------------------------------------------------------------------------
 test('user manages own fcmTokens; cannot touch another user\'s', async () => {
