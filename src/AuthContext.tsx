@@ -53,22 +53,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  // The active collection: the profile's choice if still valid, else the first one, else null.
+  // The active collection is a per-device preference (localStorage) — no cloud write needed,
+  // so switching works regardless of Firestore rules.
+  const [activeColId, setActiveColId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) { setActiveColId(null); return; }
+    try { setActiveColId(localStorage.getItem(`cinepair_activeCol_${user.uid}`)); } catch { setActiveColId(null); }
+  }, [user]);
+
   const activeCollection =
-    collections.find(c => c.id === profile?.activeCollectionId) || collections[0] || null;
+    collections.find(c => c.id === activeColId) || collections[0] || null;
 
   const removePartnerId = async (partnerId: string) => {
     if (user) await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayRemove(partnerId) });
   };
 
   const setActiveCollection = async (cid: string) => {
-    if (user) await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: cid });
+    setActiveColId(cid);
+    try { if (user) localStorage.setItem(`cinepair_activeCol_${user.uid}`, cid); } catch { /* ignore */ }
   };
 
   const createCollection = async (name: string): Promise<string | null> => {
     if (!user) return null;
     const cid = await svcCreateCollection(user.uid, name);
-    await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: cid }); // make it active
+    setActiveCollection(cid); // make it active (local only)
     return cid;
   };
 
@@ -110,7 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updateDoc(doc(db, 'users', m), { partnerIds: arrayUnion(user.uid) }).catch(() => {}),
           ])
         );
-        await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: invite.collectionId });
+        setActiveCollection(invite.collectionId); // per-device preference, no cloud write
       } catch (e) {
         console.warn('collection link after join failed:', e);
       }
