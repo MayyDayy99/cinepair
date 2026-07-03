@@ -2,22 +2,33 @@
 
 <div align="center">
   <img src="public/icon-512.png" width="128" alt="CinePair Logo" />
-  <p><i>CinePair 2.0 — Prémium moziélmény pároknak, egyenesen a zsebedben.</i></p>
+  <p><i>CinePair 2.0 — Prémium moziélmény pároknak és társaságoknak, egyenesen a zsebedben.</i></p>
 </div>
 
 ---
 
-A **CinePair** egy modern, reszponzív PWA (Progressive Web App) alkalmazás, amivel véget vethetsz a "mit nézzünk ma?" vitáknak. Húzzátok el a filmeket, és ha mindkettőtöknek tetszik valami, bumm: **MATCH!**
+A **CinePair** egy modern, reszponzív PWA (Progressive Web App) alkalmazás, amivel véget vethetsz a "mit nézzünk ma?" vitáknak. Húzzátok el a filmeket, és ha mindenkinek tetszik valami a gyűjtőben, bumm: **MATCH!**
 
 ## ✨ Főbb funkciók
 
 - **Swipe & Match:** Tinder-szerű filmválasztó interakció.
-- **Valósidejű szinkronizáció:** Azonnali visszajelzés, ha a párod is kedvel egy filmet.
+- **Gyűjtők (csoportok):** Külön közös listák a különböző társaságoknak — egy a *Szerelmemmel*, egy a *Családdal*, egy a *Haverokkal*. Válts a gyűjtők között, és a találatok azonnal újraszámolódnak a már elhúzott filmekből, nem kell mindent újraswipe-olni.
+- **Valósidejű szinkronizáció:** Azonnali visszajelzés, ha a többiek is kedvelnek egy filmet.
 - **Push Értesítések:** Találat esetén azonnali értesítés a telefonodra.
 - **PWA támogatás:** Telepíthető alkalmazásként, natív érzéssel (nincs böngészőkeret).
 - **Részletes filminfók:** Trailer nézés (YouTube), műfajok, IMDb értékelések és leírások.
 - **Okos szűrők:** Megjelenési év és műfaj szerinti keresés (TMDB adatok alapján).
 - **Hungarizált felület:** Teljesen magyar nyelvű, letisztult UI.
+
+## 🗂️ Hogyan működnek a gyűjtők
+
+Egy **gyűjtő** egy elnevezett csoport, amit egy adott társasággal használsz. A lájkjaid **globálisak** (egyszer húzol egy filmet, és minden gyűjtőben számít), a **match viszont származtatott**: mindig annak a gyűjtőnek az *összes* tagja által kedvelt filmek metszete. Ezért:
+
+- Egy film csak akkor jelenik meg találatként, ha a gyűjtő **minden** tagja lájkolta.
+- Gyűjtőt váltva a közös lista **azonnal** újraszámolódik a már elhúzott filmekből.
+- Új tag csatlakozásakor a lista szűkül (csak azok a filmek maradnak, amiket ő is kedvelt); ha valaki kilép, az ő lájkjai kiesnek a szűrésből.
+
+Mivel a match kliensoldalon számított metszet, nincs külön „match dokumentum" — a hozzáférést a Firestore-szabályok és a tagok kölcsönös kapcsolatai adják.
 
 ## 🚀 Technológiai stack
 
@@ -36,7 +47,12 @@ A **CinePair** egy modern, reszponzív PWA (Progressive Web App) alkalmazás, am
     npm install
     ```
 2.  **Környezeti változók:**
-    Hozd létre a `.env` fájlt az alábbi kulccsal:
+    Másold le a mintát és töltsd ki (a Firebase web-config a kódban van drótozva, így helyi
+    fejlesztéshez elég a TMDB kulcs; a többi opcionális, lásd a fájl kommentjeit):
+    ```bash
+    cp .env.example .env
+    ```
+    Minimum:
     ```env
     VITE_TMDB_API_KEY=a_te_tmdb_api_kulcsod
     ```
@@ -81,11 +97,13 @@ npm run test:rules
 ## 📱 Használat
 
 1. Lépj be a Google fiókoddal.
-2. A **Profil** menüben küldj **meghívót** a párodnak (a User ID-jével vagy a közös QR-kóddal).
-3. A párod a saját Profiljában a **Bejövő meghívók** alatt **Elfogadja** — csak ekkor jön létre a
-   kapcsolat (elfogadásig senki nem látja a másik lájkjait).
-4. Kezdjetek el swipe-olni a főoldalon!
+2. A **Profil** menüben hozz létre egy **gyűjtőt** (pl. *Szerelmem*, *Család*, *Haverok*).
+3. Küldj **meghívót** az adott gyűjtőbe a többieknek (a User ID-jükkel vagy a közös QR-kóddal).
+4. A meghívott a saját Profiljában a **Bejövő meghívók** alatt **Elfogadja** — csak ekkor jön létre a
+   kapcsolat és a tagság (elfogadásig senki nem látja a másik lájkjait).
+5. Válaszd ki az **aktív gyűjtőt**, és kezdjetek el swipe-olni a főoldalon! A közös találatok a
+   **Watchlist** fülön jelennek meg, gyűjtőnként.
 
 ---
 
-*© 2026 CinePair — Made with ❤️ for couples.*
+*© 2026 CinePair — Made with ❤️ for couples & crews.*
