@@ -22,7 +22,7 @@ admin.initializeApp();
 setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
 
 const TMDB_API_KEY = defineSecret('TMDB_API_KEY');
-const APP_URL = 'https://mayydayy99.github.io/cinepair/';
+const APP_URL = 'https://cinepair.maydayprod.app/';
 
 // ---------------------------------------------------------------------------
 // Server-side match creation (redundant safety net alongside the client path).

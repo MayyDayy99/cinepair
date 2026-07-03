@@ -5,7 +5,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/cinepair/',
+  // Served at the root of the custom domain (cinepair.maydayprod.app), so assets must be
+  // referenced from '/', not '/cinepair/'.
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),

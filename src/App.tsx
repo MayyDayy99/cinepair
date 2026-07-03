@@ -195,7 +195,7 @@ const LoginScreen = () => {
     }
   };
 
-  const shareUrl = "https://mayydayy99.github.io/cinepair/";
+  const shareUrl = `${window.location.origin}${(import.meta as any).env.BASE_URL || '/'}`;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0a] relative overflow-hidden font-sans">
@@ -1244,7 +1244,7 @@ const ProfileScreen = () => {
     }
   };
 
-  const myPartnerUrl = `https://mayydayy99.github.io/cinepair/#/?partner=${user?.uid || ''}`;
+  const myPartnerUrl = `${window.location.origin}${(import.meta as any).env.BASE_URL || '/'}#/?partner=${user?.uid || ''}`;
 
   return (
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
