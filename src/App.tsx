@@ -439,7 +439,7 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
             <span className="px-3 py-1 bg-primary text-black text-[10px] font-black rounded-full uppercase tracking-widest">IMDb {movie.rating}</span>
             <span className="text-on-surface/60 font-label text-[10px] sm:text-xs tracking-widest uppercase">{movie.year} • {movie.duration}</span>
           </div>
-          <h2 className="font-black font-headline leading-[0.9] text-on-surface tracking-[-0.04em] uppercase break-words" style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}>
+          <h2 className="font-black font-headline leading-[0.95] text-on-surface tracking-[-0.04em] uppercase" style={{ fontSize: 'clamp(1.4rem, 6vw, 2.5rem)', hyphens: 'none', overflowWrap: 'normal', wordBreak: 'normal', textWrap: 'balance' }}>
             {movie.title}
           </h2>
         </div>
