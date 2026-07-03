@@ -227,6 +227,62 @@ test('only recipient may change status; either party may delete', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// collections (groups)
+// ---------------------------------------------------------------------------
+const COL = 'col1';
+function colDoc(owner, members) {
+  return { name: 'Szerelmem', ownerId: owner, memberIds: members, createdAt: serverTimestamp() };
+}
+
+test('owner can create a collection with self as owner+member; cannot spoof ownerId', async () => {
+  const aDb = testEnv.authenticatedContext(A).firestore();
+  await assertSucceeds(setDoc(doc(aDb, 'collections', COL), colDoc(A, [A])));
+  await assertFails(setDoc(doc(aDb, 'collections', 'col2'), colDoc(B, [B])));
+});
+
+test('collection is readable by members only', async () => {
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A, B])); });
+  await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(A).firestore(), 'collections', COL)));
+  await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL)));
+  await assertFails(getDoc(doc(testEnv.authenticatedContext(C).firestore(), 'collections', COL)));
+});
+
+test('a non-member may join (add only self) but not add someone else', async () => {
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A])); });
+  await assertSucceeds(updateDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL), { memberIds: arrayUnion(B) }));
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A])); });
+  await assertFails(updateDoc(doc(testEnv.authenticatedContext(C).firestore(), 'collections', COL), { memberIds: arrayUnion(B) }));
+});
+
+test('a member may leave (remove self) but not remove others; only owner renames', async () => {
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A, B, C])); });
+  await assertSucceeds(updateDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL), { memberIds: arrayRemove(B) }));
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A, B, C])); });
+  await assertFails(updateDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL), { memberIds: arrayRemove(C) }));
+  await assertSucceeds(updateDoc(doc(testEnv.authenticatedContext(A).firestore(), 'collections', COL), { name: 'Haverok' }));
+  await assertFails(updateDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL), { name: 'Hekk' }));
+});
+
+test('only the owner can delete a collection', async () => {
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A, B])); });
+  await assertFails(deleteDoc(doc(testEnv.authenticatedContext(B).firestore(), 'collections', COL)));
+  await assertSucceeds(deleteDoc(doc(testEnv.authenticatedContext(A).firestore(), 'collections', COL)));
+});
+
+test('collection watched flags are editable by members only', async () => {
+  await seed(async (db) => { await setDoc(doc(db, 'collections', COL), colDoc(A, [A, B])); });
+  await assertSucceeds(setDoc(doc(testEnv.authenticatedContext(A).firestore(), 'collections', COL, 'watched', MOVIE), { at: serverTimestamp() }));
+  await assertFails(setDoc(doc(testEnv.authenticatedContext(C).firestore(), 'collections', COL, 'watched', MOVIE), { at: serverTimestamp() }));
+});
+
+test('an invite may carry a collectionId', async () => {
+  const aDb = testEnv.authenticatedContext(A).firestore();
+  await assertSucceeds(setDoc(doc(aDb, 'invites', `${A}_${B}`), {
+    from: A, to: B, status: 'pending', collectionId: COL, collectionName: 'Szerelmem', createdAt: serverTimestamp(),
+  }));
+});
+
+// ---------------------------------------------------------------------------
 // fcmTokens: owner-only
 // ---------------------------------------------------------------------------
 test('user manages own fcmTokens; cannot touch another user\'s', async () => {

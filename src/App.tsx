@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react';
+import { LogIn, Heart, User as UserIcon, Layers, Info, X, PlayCircle, Play, Share2, UserPlus, Star, TrendingUp, HeartOff, Loader2, Film, Copy, Check, Maximize, Minimize, Undo2, Bell, Smartphone, Share, Shuffle, Eye, EyeOff, Sparkles, Trash2, Users, Plus, Pencil } from 'lucide-react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { signInWithGoogle, signInAsGuest, logout } from './firebase';
-import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, getPartnerLikedMovies, swipeMovie, undoSwipe, removeMatch, toggleMatchWatched, Movie } from './services/movieService';
+import { getMovies, getMovieById, getMovieTrailer, getGenreList, getUserSwipes, getPartnerLikedMovies, swipeMovie, undoSwipe, toggleCollectionWatched, isCollectionMatch, Movie } from './services/movieService';
 import QRCode from 'react-qr-code';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -467,8 +467,10 @@ const MovieCard = ({ movie, onSwipe, onInfo, leaveDirection }: MovieCardProps) =
 };
 
 const SwipeScreen = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, activeCollection } = useAuth();
   const navigate = useNavigate();
+  // Other members of the active collection — whose likes we mix in and match against.
+  const otherMembers = (activeCollection?.memberIds || []).filter(m => m !== user?.uid);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showMatch, setShowMatch] = useState<Movie | null>(null);
@@ -503,11 +505,10 @@ const SwipeScreen = () => {
 
       let finalMovies = [...unswiped];
 
-      // Mix in partner likes if available (80-20 ratio)
-      const partnerIds: string[] = profile?.partnerIds || [];
-      if (partnerIds.length > 0) {
-        // Exclude any partner like that already appears on this discover page (avoids a duplicate card).
-        const partnerLikes = (await getPartnerLikedMovies(partnerIds, user.uid)).filter(m => !pageIds.has(m.id));
+      // Mix in the active collection members' likes (80-20 ratio)
+      if (otherMembers.length > 0) {
+        // Exclude any member like that already appears on this discover page (avoids a duplicate card).
+        const partnerLikes = (await getPartnerLikedMovies(otherMembers, user.uid)).filter(m => !pageIds.has(m.id));
         if (gen !== loadGenRef.current) return;
         if (partnerLikes.length > 0) {
           const mixed: Movie[] = [];
@@ -555,7 +556,8 @@ const SwipeScreen = () => {
   useEffect(() => {
     setPage(1);
     loadMoreMovies(1, yearFilter, genreFilter);
-  }, [user, yearFilter, genreFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, yearFilter, genreFilter, activeCollection?.id]);
 
   const processNext = () => {
     const nextIndex = currentIndex + 1;
@@ -583,12 +585,16 @@ const SwipeScreen = () => {
     processNext();
     setTimeout(() => setLeaveDirection(null), 350);
 
-    // Persist + detect a match in the background.
-    swipeMovie(user.uid, movie.id, type, profile?.partnerIds || [])
-      .then((isMatch) => {
-        if (isMatch) {
-          navigator.vibrate?.([50, 30, 50]);
-          setShowMatch(movie);
+    // Persist the swipe (no legacy match doc), then check if it completes a match in the active
+    // collection (every other member has also liked it).
+    swipeMovie(user.uid, movie.id, type, [])
+      .then(async () => {
+        if (type === 'like' && otherMembers.length > 0) {
+          const matched = await isCollectionMatch(movie.id, otherMembers);
+          if (matched) {
+            navigator.vibrate?.([50, 30, 50]);
+            setShowMatch(movie);
+          }
         }
       })
       .catch((e) => {
@@ -812,7 +818,7 @@ const SwipeScreen = () => {
 };
 
 const WatchlistScreen = () => {
-  const { user, profile, matches, matchesReady } = useAuth();
+  const { user, matches, matchesReady, activeCollection, collections, setActiveCollection } = useAuth();
   const navigate = useNavigate();
   const [moviesData, setMoviesData] = useState<Record<string, Movie>>({});
   const moviesDataRef = useRef<Record<string, Movie>>({});
@@ -822,23 +828,21 @@ const WatchlistScreen = () => {
   const [partnerLikedMovies, setPartnerLikedMovies] = useState<Movie[]>([]);
   const [loadingPartnerLikes, setLoadingPartnerLikes] = useState(false);
 
+  const otherMembers = (activeCollection?.memberIds || []).filter(m => m !== user?.uid);
+
   useEffect(() => {
-    const partnerIds: string[] = profile?.partnerIds || [];
-    if (showPartnerLikes && user && partnerIds.length > 0) {
+    if (showPartnerLikes && user && otherMembers.length > 0) {
       setLoadingPartnerLikes(true);
-      getPartnerLikedMovies(partnerIds, user.uid).then(movies => {
+      getPartnerLikedMovies(otherMembers, user.uid).then(movies => {
         setPartnerLikedMovies(movies);
         setLoadingPartnerLikes(false);
       });
     }
-  }, [showPartnerLikes, user, profile?.partnerIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPartnerLikes, user, activeCollection?.id]);
 
-  // matches come from the single app-wide subscription (AuthContext). Here we only resolve
-  // poster/metadata for movies we haven't loaded yet — deduped via a ref so realtime snapshots
-  // don't re-fetch the entire watchlist on every update.
+  // Resolve poster/metadata for the derived matches (deduped via a ref).
   useEffect(() => {
-    // Stay in the loading state until the first real matches snapshot arrives, so users with
-    // matches don't see a flash of the "no matches yet" empty state on mount.
     if (!matchesReady) return;
     let cancelled = false;
     (async () => {
@@ -859,8 +863,6 @@ const WatchlistScreen = () => {
   }, [matches, matchesReady]);
 
   const handleRoulette = () => {
-    // Only roll among unwatched matches whose movie metadata actually loaded, otherwise the
-    // button could silently do nothing when the winner's data failed to fetch.
     const pool = matches.filter(m => !m.watched && moviesData[m.movieId]);
     if (pool.length === 0) {
       toast.error('Nincs megnézhető film a rulettben!', { icon: '🍿' });
@@ -871,12 +873,15 @@ const WatchlistScreen = () => {
     setRouletteWinner(moviesData[winnerMatch.movieId]);
   };
 
-  const displayMatches = [...matches].sort((a, b) => {
-    if (a.watched !== b.watched) return a.watched ? 1 : -1;
-    return (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0);
-  });
+  const toggleWatched = (movieId: string, watched: boolean) => {
+    if (!activeCollection) return;
+    toggleCollectionWatched(activeCollection.id, movieId, watched)
+      .catch(err => { console.error(err); toast.error('Nem sikerült menteni.'); });
+  };
 
-  if (loading) {
+  const displayMatches = [...matches].sort((a, b) => (a.watched === b.watched ? 0 : a.watched ? 1 : -1));
+
+  if (loading && activeCollection) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -885,34 +890,60 @@ const WatchlistScreen = () => {
     );
   }
 
+  // No collection yet — prompt to create one in the profile.
+  if (!activeCollection) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-6">
+        <div className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-white/20 border border-white/5"><Users size={44} /></div>
+        <div className="space-y-2 max-w-xs">
+          <h2 className="text-2xl font-black font-headline uppercase tracking-tight">Nincs még gyűjtőd</h2>
+          <p className="text-on-surface-variant text-sm leading-relaxed opacity-70">Hozz létre egy gyűjtőt (pl. „Szerelmem", „Család", „Haverok") a Profilban, hívd meg a tagokat, és itt megjelennek a közös találatok!</p>
+        </div>
+        <Link to="/profile" className="w-full max-w-xs py-4 bg-primary text-black rounded-2xl font-headline font-black uppercase tracking-tight text-center">Gyűjtő létrehozása</Link>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
       <div className="mb-6 flex flex-col gap-4">
         <div className="flex items-end justify-between">
-          <div>
-            <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Közös gyűjtemény</p>
-            <h1 className="text-4xl font-black font-headline tracking-tight uppercase">Watchlist</h1>
+          <div className="min-w-0">
+            <p className="text-primary font-headline font-black uppercase tracking-[0.2em] text-[10px] mb-1">Aktív gyűjtő</p>
+            <h1 className="text-3xl font-black font-headline tracking-tight uppercase truncate">{activeCollection.name}</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <motion.button whileTap={{ scale: 0.9 }} onClick={handleRoulette} aria-label="Véletlen film választása (rulett)" title="Rulett"
               className="w-10 h-10 sm:w-12 sm:h-12 bg-primary text-black rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
               <Shuffle size={18} />
             </motion.button>
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full h-10 flex items-center">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full h-10 flex items-center" title="Találatok száma">
               <p className="text-xs font-bold text-white/60"><span className="text-primary">{matches.length}</span></p>
             </div>
           </div>
         </div>
+
+        {/* Collection switcher — swap between "Szerelmem", "Család", "Haverok"… */}
+        {collections.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
+            {collections.map(c => (
+              <button key={c.id} onClick={() => setActiveCollection(c.id)}
+                className={`shrink-0 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider transition-colors ${c.id === activeCollection.id ? 'bg-primary text-black' : 'bg-white/5 text-white/50 hover:text-white/80'}`}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex p-1 bg-white/5 rounded-2xl border border-white/5">
           <button onClick={() => setShowPartnerLikes(false)}
             className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${!showPartnerLikes ? 'bg-white/10 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}>
             <Heart size={14} fill={!showPartnerLikes ? "currentColor" : "none"} /> MATCH-EK
           </button>
-          <button onClick={() => { if (!profile?.partnerIds?.length) { toast.error('Csak összekötött taggal érhető el!'); return; } setShowPartnerLikes(true); }}
-            aria-disabled={!profile?.partnerIds?.length}
-            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'} ${!profile?.partnerIds?.length ? 'opacity-40' : ''}`}>
-            <Sparkles size={14} fill={showPartnerLikes ? "currentColor" : "none"} /> PÁROM KEDVENCEI
+          <button onClick={() => { if (otherMembers.length === 0) { toast.error('Hívj meg valakit ebbe a gyűjtőbe!'); return; } setShowPartnerLikes(true); }}
+            aria-disabled={otherMembers.length === 0}
+            className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${showPartnerLikes ? 'bg-secondary/20 text-secondary shadow-lg border border-secondary/20' : 'text-white/40 hover:text-white/60'} ${otherMembers.length === 0 ? 'opacity-40' : ''}`}>
+            <Sparkles size={14} fill={showPartnerLikes ? "currentColor" : "none"} /> TAGOK KEDVENCEI
           </button>
         </div>
       </div>
@@ -941,7 +972,7 @@ const WatchlistScreen = () => {
                       <button onClick={async (e) => {
                         e.preventDefault();
                         try {
-                          await swipeMovie(user!.uid, movie.id, 'like', profile?.partnerIds || []);
+                          await swipeMovie(user!.uid, movie.id, 'like', []);
                           toast.success('Lopva hozzáadva a listához! 😉', { icon: '❤️' });
                           setPartnerLikedMovies(prev => prev.filter(m => m.id !== movie.id));
                         } catch (err) {
@@ -954,7 +985,7 @@ const WatchlistScreen = () => {
                       </button>
                     </div>
                     <div className="absolute bottom-0 left-0 right-0 p-4">
-                      <p className="text-[9px] font-black text-secondary uppercase tracking-[0.2em] mb-1">Párod lájkolta</p>
+                      <p className="text-[9px] font-black text-secondary uppercase tracking-[0.2em] mb-1">Tag lájkolta</p>
                       <h3 className="text-sm font-black text-white uppercase line-clamp-2">{movie.title}</h3>
                     </div>
                     <Link to={`/movie/${movie.id}`} className="absolute inset-0 z-0" />
@@ -969,8 +1000,8 @@ const WatchlistScreen = () => {
               <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
                 <div className="w-24 h-24 bg-surface-container-high rounded-[2rem] flex items-center justify-center text-white/20 border border-white/5"><Film size={48} /></div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-bold font-headline uppercase tracking-tight">Még nincs közös listád</h3>
-                  <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">Kezdj el válogatni, és ha a párod is kedveli ugyanazt a filmet, itt fog megjelenni!</p>
+                  <h3 className="text-xl font-bold font-headline uppercase tracking-tight">Még nincs közös találat</h3>
+                  <p className="text-on-surface-variant max-w-[240px] mx-auto text-sm leading-relaxed opacity-60">Amikor a(z) „{activeCollection.name}" gyűjtő minden tagja ugyanazt a filmet lájkolja, itt jelenik meg!</p>
                 </div>
                 <Link to="/" className="text-primary font-headline font-black uppercase tracking-widest text-xs hover:underline underline-offset-8">Vissza a válogatáshoz</Link>
               </div>
@@ -980,19 +1011,15 @@ const WatchlistScreen = () => {
                   const movie = moviesData[match.movieId];
                   if (!movie) return null;
                   return (
-                    <motion.div key={match.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+                    <motion.div key={match.movieId} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
                       className={`group relative aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/5 transition-all duration-500 ${match.watched ? 'opacity-40 grayscale-[0.5]' : ''}`}>
                       <img src={movie.posterUrl} alt={movie.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
                         <div className={`p-1.5 rounded-full shadow-lg ${match.watched ? 'bg-white/10 text-white/40' : 'bg-primary text-black'}`}><Heart size={14} fill="currentColor" /></div>
-                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleMatchWatched(match.id, !match.watched).catch(err => { console.error(err); toast.error('Nem sikerült menteni.'); }); }}
+                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleWatched(match.movieId, !match.watched); }}
                           title={match.watched ? "Mégse láttuk" : "Láttuk"} className={`p-1.5 rounded-full shadow-lg transition-colors ${match.watched ? 'bg-primary text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}>
                           {match.watched ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (window.confirm('Törlöd ezt a találatot a közös listáról?')) removeMatch(match.id).catch(err => { console.error(err); toast.error('Nem sikerült törölni.'); }); }}
-                          title="Törlés" className="p-1.5 rounded-full shadow-lg bg-white/10 text-white hover:bg-error/40 transition-colors">
-                          <Trash2 size={14} />
                         </button>
                       </div>
                       <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -1222,29 +1249,48 @@ const MovieDetailScreen = () => {
 };
 
 const ProfileScreen = () => {
-  const { profile, user, sendInvite, acceptInvite, declineInvite, invites, removePartnerId } = useAuth();
-  const [partnerIdInput, setPartnerIdInput] = useState('');
-  const [showQr, setShowQr] = useState(false);
+  const {
+    profile, user, collections, activeCollection, setActiveCollection,
+    createCollection, renameCollection, deleteCollection, leaveCollection,
+    sendInvite, acceptInvite, declineInvite, invites,
+  } = useAuth();
+  const [newColName, setNewColName] = useState('');
+  const [inviteInput, setInviteInput] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const partnerIds: string[] = profile?.partnerIds || [];
-  // Hide invites from someone already linked (e.g. a stale invite left by a reciprocal-delete race).
-  const pendingInvites = invites.filter((inv: any) => !partnerIds.includes(inv.from));
-
-  const handleAddPartner = async () => {
-    const trimmed = partnerIdInput.trim();
-    if (!trimmed || trimmed === user?.uid || partnerIds.includes(trimmed)) return;
-    try {
-      await sendInvite(trimmed);
-      toast.success('Meghívó elküldve! A másik fél a Profilban fogadhatja el.');
-      setPartnerIdInput('');
-    } catch (e) {
-      console.error('sendInvite failed:', e);
-      toast.error('Nem sikerült elküldeni a meghívót.');
-    }
+  const handleCreate = async () => {
+    const name = newColName.trim();
+    if (!name) return;
+    try { await createCollection(name); setNewColName(''); toast.success('Gyűjtő létrehozva!'); }
+    catch (e) { console.error(e); toast.error('Nem sikerült létrehozni.'); }
   };
 
-  const myPartnerUrl = `${window.location.origin}${(import.meta as any).env.BASE_URL || '/'}#/?partner=${user?.uid || ''}`;
+  const handleInvite = async () => {
+    const to = inviteInput.trim();
+    if (!to || !activeCollection) return;
+    if (to === user?.uid) { toast.error('Magadat nem hívhatod meg.'); return; }
+    if (activeCollection.memberIds.includes(to)) { toast.error('Ez a felhasználó már tag.'); return; }
+    try {
+      await sendInvite(to, activeCollection.id, activeCollection.name);
+      toast.success(`Meghívó elküldve a(z) „${activeCollection.name}" gyűjtőbe!`);
+      setInviteInput('');
+    } catch (e) { console.error(e); toast.error('Nem sikerült elküldeni a meghívót.'); }
+  };
+
+  const handleRename = async (c: any) => {
+    const name = window.prompt('Gyűjtő új neve:', c.name);
+    if (name && name.trim()) {
+      try { await renameCollection(c.id, name.trim()); } catch (e) { console.error(e); toast.error('Nem sikerült átnevezni.'); }
+    }
+  };
+  const handleDelete = async (c: any) => {
+    if (!window.confirm(`Törlöd a(z) „${c.name}" gyűjtőt? (A tagok filmértékelései megmaradnak.)`)) return;
+    try { await deleteCollection(c.id); toast.success('Gyűjtő törölve.'); } catch (e) { console.error(e); toast.error('Nem sikerült törölni.'); }
+  };
+  const handleLeave = async (c: any) => {
+    if (!window.confirm(`Kilépsz a(z) „${c.name}" gyűjtőből?`)) return;
+    try { await leaveCollection(c.id); toast.success('Kiléptél a gyűjtőből.'); } catch (e) { console.error(e); toast.error('Nem sikerült kilépni.'); }
+  };
 
   return (
     <div className="h-full w-full px-6 pt-24 pb-32 overflow-y-auto">
@@ -1268,28 +1314,20 @@ const ProfileScreen = () => {
           <p className="text-on-surface-variant font-body text-sm opacity-60">{user?.email}</p>
         </div>
 
-        {/* Partner Connection Section */}
+        {/* Collections Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between ml-4">
-            <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Csoport összekötés</h3>
+            <h3 className="text-xs font-black font-headline uppercase tracking-[0.2em] text-white/40">Gyűjtők</h3>
             <button
               onClick={() => {
-                if (!('Notification' in window)) {
-                  toast.error('Ez a böngésző nem támogatja az értesítéseket.');
-                  return;
-                }
-                if (Notification.permission === 'denied') {
-                  toast.error('Az értesítések le vannak tiltva – engedélyezd a böngésző beállításaiban.');
-                  return;
-                }
+                if (!('Notification' in window)) { toast.error('Ez a böngésző nem támogatja az értesítéseket.'); return; }
+                if (Notification.permission === 'denied') { toast.error('Az értesítések le vannak tiltva – engedélyezd a böngésző beállításaiban.'); return; }
                 Notification.requestPermission().then(async permission => {
                   if (permission === 'granted') {
                     const { registerForPush } = await import('./push');
                     const ok = user ? await registerForPush(user.uid) : false;
                     toast.success(ok ? 'Push értesítések bekapcsolva!' : 'Értesítések engedélyezve!');
-                  } else if (permission === 'denied') {
-                    toast.error('Az értesítéseket letiltottad.');
-                  }
+                  } else if (permission === 'denied') { toast.error('Az értesítéseket letiltottad.'); }
                 });
               }}
               className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 active:scale-95"
@@ -1297,33 +1335,27 @@ const ProfileScreen = () => {
               <Bell size={12} /> Értesítések
             </button>
           </div>
-          <div className="bg-glass rounded-[2rem] p-8 border border-white/5 shadow-2xl space-y-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center text-secondary border border-secondary/20">
-                <UserPlus size={22} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white uppercase tracking-tight">Tagok ({partnerIds.length})</p>
-                <p className="text-xs text-on-surface-variant opacity-60">Adj hozzá párt, barátot vagy családtagot.</p>
-              </div>
-            </div>
 
-            {/* Incoming connection requests */}
-            {pendingInvites.length > 0 && (
+          <div className="bg-glass rounded-[2rem] p-6 sm:p-8 border border-white/5 shadow-2xl space-y-6">
+            {/* Incoming invites */}
+            {invites.length > 0 && (
               <div className="space-y-2">
-                <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Bejövő meghívók ({pendingInvites.length})</p>
-                {pendingInvites.map((inv) => (
-                  <div key={inv.id} className="flex items-center justify-between bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3">
+                <p className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Bejövő meghívók ({invites.length})</p>
+                {invites.map((inv: any) => (
+                  <div key={inv.id} className="flex items-center justify-between bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 gap-2">
                     <div className="flex items-center gap-3 min-w-0">
                       {inv.fromPhoto ? (
                         <img src={inv.fromPhoto} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center shrink-0"><UserIcon size={16} className="text-secondary" /></div>
                       )}
-                      <p className="text-xs font-bold text-white/80 truncate">{inv.fromName || 'Ismeretlen'}</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white/80 truncate">{inv.fromName || 'Ismeretlen'}</p>
+                        {inv.collectionName && <p className="text-[9px] text-secondary/70 uppercase tracking-widest truncate">→ {inv.collectionName}</p>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={async () => { try { await acceptInvite(inv); toast.success('Összekötve! 🎬'); } catch (e) { console.error(e); toast.error('Nem sikerült elfogadni.'); } }}
+                      <button onClick={async () => { try { await acceptInvite(inv); toast.success('Csatlakoztál! 🎬'); } catch (e) { console.error(e); toast.error('Nem sikerült elfogadni.'); } }}
                         aria-label="Meghívó elfogadása" title="Elfogadás" className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-black active:scale-90 transition-transform"><Check size={16} /></button>
                       <button onClick={async () => { try { await declineInvite(inv.id); } catch (e) { console.error(e); } }}
                         aria-label="Meghívó elutasítása" title="Elutasítás" className="w-8 h-8 flex items-center justify-center rounded-full bg-error/20 text-error active:scale-90 transition-transform"><X size={16} /></button>
@@ -1333,103 +1365,99 @@ const ProfileScreen = () => {
               </div>
             )}
 
-            {/* Connected partners list */}
-            {partnerIds.length > 0 && (
-              <div className="space-y-2">
-                {partnerIds.map((pid) => (
-                  <div key={pid} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-2 h-2 bg-secondary rounded-full shrink-0 animate-pulse" />
-                      <p className="text-xs font-bold text-white/70 font-mono truncate">
-                        {pid.slice(0, 8)}…{pid.slice(-4)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (!window.confirm('Biztosan törlöd ezt a kapcsolatot?')) return;
-                        try { await removePartnerId(pid); toast.success('Kapcsolat törölve.'); }
-                        catch (e) { console.error(e); toast.error('Nem sikerült törölni.'); }
-                      }}
-                      aria-label="Tag eltávolítása"
-                      className="shrink-0 ml-3 w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:bg-error/20 hover:text-error transition-colors active:scale-90"
-                    >
-                      <X size={14} />
+            {/* Your collections */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Gyűjtőid ({collections.length})</p>
+              {collections.length === 0 && (
+                <p className="text-xs text-on-surface-variant opacity-60 py-2">Még nincs gyűjtőd. Hozz létre egyet lent (pl. „Szerelmem"), és hívd meg a tagokat!</p>
+              )}
+              {collections.map((c) => {
+                const active = c.id === activeCollection?.id;
+                const isOwner = c.ownerId === user?.uid;
+                return (
+                  <div key={c.id} className={`flex items-center justify-between rounded-2xl px-4 py-3 gap-2 border transition-colors ${active ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/10'}`}>
+                    <button onClick={() => setActiveCollection(c.id)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${active ? 'bg-primary animate-pulse' : 'bg-white/20'}`} />
+                      <div className="min-w-0">
+                        <p className={`text-sm font-bold truncate ${active ? 'text-primary' : 'text-white/80'}`}>{c.name}</p>
+                        <p className="text-[9px] text-white/40 uppercase tracking-widest">{c.memberIds.length} tag{active ? ' • aktív' : ''}</p>
+                      </div>
                     </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isOwner ? (
+                        <>
+                          <button onClick={() => handleRename(c)} aria-label="Átnevezés" title="Átnevezés" className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white active:scale-90"><Pencil size={13} /></button>
+                          <button onClick={() => handleDelete(c)} aria-label="Törlés" title="Törlés" className="w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:text-error active:scale-90"><Trash2 size={13} /></button>
+                        </>
+                      ) : (
+                        <button onClick={() => handleLeave(c)} aria-label="Kilépés" title="Kilépés" className="w-7 h-7 flex items-center justify-center rounded-full bg-error/10 text-error/60 hover:text-error active:scale-90"><X size={14} /></button>
+                      )}
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+
+            {/* Create a new collection */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newColName}
+                onChange={(e) => setNewColName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                placeholder="Új gyűjtő neve (pl. Család)"
+                maxLength={40}
+                className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
+              />
+              <button onClick={handleCreate} disabled={!newColName.trim()} aria-label="Gyűjtő létrehozása"
+                className="shrink-0 w-12 bg-primary text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-30">
+                <Plus size={20} />
+              </button>
+            </div>
+
+            {/* Invite a member to the active collection */}
+            {activeCollection && (
+              <div className="pt-6 border-t border-white/5 space-y-3">
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Tag meghívása → „{activeCollection.name}"</p>
+                <input
+                  type="text"
+                  value={inviteInput}
+                  onChange={(e) => setInviteInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                  placeholder="A meghívott User ID-ja"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
+                />
+                <button onClick={handleInvite} disabled={!inviteInput.trim()}
+                  className="w-full bg-secondary/20 border border-secondary/30 text-secondary font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  <UserPlus size={18} /> Meghívó küldése
+                </button>
               </div>
             )}
 
-            {/* Add partner input */}
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={partnerIdInput}
-                onChange={(e) => setPartnerIdInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddPartner()}
-                placeholder="Partner / Családtag User ID"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
-              />
-              <button
-                onClick={handleAddPartner}
-                disabled={!partnerIdInput.trim()}
-                className="w-full bg-primary text-black font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <UserPlus size={18} /> Meghívás
-              </button>
-            </div>
-
-            <div className="pt-6 border-t border-white/5 space-y-6">
-              <button 
-                onClick={() => setShowQr(!showQr)} 
-                className="w-full bg-[#1a1a1a] border border-secondary/30 text-secondary font-headline font-bold py-4 rounded-2xl hover:bg-[#2a2a2a] active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
-              >
-                Közös link QR mutatása
-              </button>
-              <AnimatePresence>
-                {showQr && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }} 
-                    animate={{ height: 'auto', opacity: 1 }} 
-                    exit={{ height: 0, opacity: 0 }} 
-                    className="overflow-hidden flex flex-col items-center pt-2 space-y-3"
-                  >
-                    <div className="bg-white p-3 rounded-2xl shadow-xl">
-                      <QRCode value={myPartnerUrl} size={150} fgColor="#000" bgColor="#fff" />
-                    </div>
-                    <p className="text-[10px] text-white/50 text-center uppercase tracking-widest px-4 line-clamp-2">
-                      Olvasd be a kamerával a másik telefonon a gyors csatlakozáshoz!
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <button
-                onClick={() => {
-                  if (!navigator.clipboard) { toast.error('A vágólap nem elérhető ebben a böngészőben.'); return; }
-                  navigator.clipboard.writeText(user?.uid || '')
-                    .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
-                    .catch(() => toast.error('Nem sikerült másolni.'));
-                }}
-                className="w-full bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-4 rounded-2xl transition-colors flex items-center justify-between group active:scale-[0.98]"
-              >
-                <div className="flex flex-col items-start gap-1 min-w-0">
-                  <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">A te azonosítód</span>
-                  <span className="text-white/80 font-mono text-xs truncate max-w-[180px]" title={user?.uid}>
-                    {user?.uid ? `${user.uid.slice(0, 10)}…${user.uid.slice(-6)}` : ''}
-                  </span>
+            {/* Copy my own ID so others can invite me */}
+            <button
+              onClick={() => {
+                if (!navigator.clipboard) { toast.error('A vágólap nem elérhető ebben a böngészőben.'); return; }
+                navigator.clipboard.writeText(user?.uid || '')
+                  .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+                  .catch(() => toast.error('Nem sikerült másolni.'));
+              }}
+              className="w-full bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-4 rounded-2xl transition-colors flex items-center justify-between group active:scale-[0.98]"
+            >
+              <div className="flex flex-col items-start gap-1 min-w-0">
+                <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">A te azonosítód (oszd meg, hogy meghívhassanak)</span>
+                <span className="text-white/80 font-mono text-xs truncate max-w-[180px]" title={user?.uid}>
+                  {user?.uid ? `${user.uid.slice(0, 10)}…${user.uid.slice(-6)}` : ''}
+                </span>
+              </div>
+              {copied ? (
+                <div className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1.5 rounded-full">
+                  <Check size={14} /> <span className="text-[10px] font-bold uppercase tracking-widest">Másolva</span>
                 </div>
-                {copied ? (
-                  <div className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1.5 rounded-full">
-                    <Check size={14} /> <span className="text-[10px] font-bold uppercase tracking-widest">Másolva</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-white/40 group-hover:text-white/80 transition-colors">
-                    <Copy size={16} />
-                  </div>
-                )}
-              </button>
-            </div>
+              ) : (
+                <div className="flex items-center gap-2 text-white/40 group-hover:text-white/80 transition-colors"><Copy size={16} /></div>
+              )}
+            </button>
           </div>
         </div>
 
@@ -1449,57 +1477,10 @@ const ProfileScreen = () => {
 };
 
 const AppContent = () => {
-  const { user, loading, sendInvite, matches, matchesReady } = useAuth();
+  const { user, loading, sendInvite } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isMovieDetail = location.pathname.startsWith('/movie/');
-  // Tracked in a ref (not state) so detecting new matches never re-subscribes or re-runs setup.
-  const prevMatchCountRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!user) {
-      prevMatchCountRef.current = null;
-      return;
-    }
-    // Wait for the first real snapshot before treating count changes as deltas — otherwise the
-    // initial 0 -> N jump would fire a bogus "new match" notification for a pre-existing match.
-    if (!matchesReady) return;
-    const prev = prevMatchCountRef.current;
-    if (prev !== null && matches.length > prev) {
-      // Find the newest match based on timestamp
-      const newMatch = matches.reduce((p, current) =>
-        (p.timestamp?.toMillis() || 0) > (current.timestamp?.toMillis() || 0) ? p : current
-      );
-
-      if (newMatch && newMatch.matchedBy && newMatch.matchedBy !== user.uid) {
-        getMovieById(newMatch.movieId).then((movie) => {
-          if (!movie) return;
-          // Trigger in-app toast
-          toast.custom((t) => (
-            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-surface-container-high shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-2xl pointer-events-auto flex items-center border border-primary/20 p-4 gap-4`}>
-              <div className="h-16 w-12 rounded-lg overflow-hidden shrink-0">
-                <img src={movie.posterUrl} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black tracking-widest uppercase text-primary mb-1">Új Találat!</p>
-                <p className="text-sm font-bold text-white line-clamp-1">{movie.title}</p>
-                <p className="text-xs text-white/50">A párod épp most kedvelte!</p>
-              </div>
-              <button onClick={() => { toast.dismiss(t.id); navigate(`/movie/${movie.id}`); }} className="bg-primary text-black px-4 py-2 text-xs font-bold uppercase rounded-full">
-                Nézem
-              </button>
-            </div>
-          ), { duration: 5000, position: 'top-center' });
-
-          // Trigger OS notification if allowed (base-aware icon so it resolves under /cinepair/)
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Új CinePair Találat! 🍿', { body: `A párod is kedvelte: ${movie.title}`, icon: `${(import.meta as any).env.BASE_URL}icon-512.png` });
-          }
-        });
-      }
-    }
-    prevMatchCountRef.current = matches.length;
-  }, [matches, matchesReady, user, navigate]);
 
   // If notifications are already granted, (re)register this device's push token on login.
   // Lazy-import so the FCM/messaging SDK stays out of the initial bundle.

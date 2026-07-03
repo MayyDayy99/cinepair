@@ -1,35 +1,44 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, collection, query, where, onSnapshot, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, deleteField, serverTimestamp } from 'firebase/firestore';
+import { doc, collection, query, where, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc, arrayUnion, arrayRemove, deleteField, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { subscribeToMatches } from './services/movieService';
+import {
+  subscribeToCollections, subscribeToCollectionMatches,
+  createCollection as svcCreateCollection, renameCollection as svcRenameCollection,
+  deleteCollection as svcDeleteCollection, leaveCollection as svcLeaveCollection,
+  Collection,
+} from './services/movieService';
+
+export interface DerivedMatch { movieId: string; watched: boolean; }
 
 interface AuthContextType {
   user: User | null;
   profile: any | null;
-  matches: any[];
+  collections: Collection[];
+  activeCollection: Collection | null;
+  matches: DerivedMatch[];
   matchesReady: boolean;
   invites: any[];
   loading: boolean;
   isAuthReady: boolean;
-  sendInvite: (toUid: string) => Promise<void>;
+  sendInvite: (toUid: string, collectionId?: string, collectionName?: string) => Promise<void>;
   acceptInvite: (invite: any) => Promise<void>;
   declineInvite: (inviteId: string) => Promise<void>;
+  createCollection: (name: string) => Promise<string | null>;
+  renameCollection: (cid: string, name: string) => Promise<void>;
+  deleteCollection: (cid: string) => Promise<void>;
+  leaveCollection: (cid: string) => Promise<void>;
+  setActiveCollection: (cid: string) => Promise<void>;
   removePartnerId: (partnerId: string) => Promise<void>;
 }
 
+const noop = async () => {};
 const AuthContext = createContext<AuthContextType>({
-  user: null,
-  profile: null,
-  matches: [],
-  matchesReady: false,
-  invites: [],
-  loading: true,
-  isAuthReady: false,
-  sendInvite: async () => {},
-  acceptInvite: async () => {},
-  declineInvite: async () => {},
-  removePartnerId: async () => {},
+  user: null, profile: null, collections: [], activeCollection: null, matches: [], matchesReady: false,
+  invites: [], loading: true, isAuthReady: false,
+  sendInvite: noop, acceptInvite: noop, declineInvite: noop,
+  createCollection: async () => null, renameCollection: noop, deleteCollection: noop, leaveCollection: noop,
+  setActiveCollection: noop, removePartnerId: noop,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -37,157 +46,157 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
-  const [matches, setMatches] = useState<any[]>([]);
-  // Distinguishes "no matches yet, still loading" from "first snapshot received (genuinely 0/N)".
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [matches, setMatches] = useState<DerivedMatch[]>([]);
   const [matchesReady, setMatchesReady] = useState(false);
   const [invites, setInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  // Send a pending connection request. Grants NO access until the recipient accepts.
-  const sendInvite = async (toUid: string) => {
+  // The active collection: the profile's choice if still valid, else the first one, else null.
+  const activeCollection =
+    collections.find(c => c.id === profile?.activeCollectionId) || collections[0] || null;
+
+  const removePartnerId = async (partnerId: string) => {
+    if (user) await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayRemove(partnerId) });
+  };
+
+  const setActiveCollection = async (cid: string) => {
+    if (user) await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: cid });
+  };
+
+  const createCollection = async (name: string): Promise<string | null> => {
+    if (!user) return null;
+    const cid = await svcCreateCollection(user.uid, name);
+    await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: cid }); // make it active
+    return cid;
+  };
+
+  const renameCollection = (cid: string, name: string) => svcRenameCollection(cid, name);
+  const deleteCollection = (cid: string) => svcDeleteCollection(cid);
+  const leaveCollection = async (cid: string) => {
+    if (user) await svcLeaveCollection(cid, user.uid);
+  };
+
+  // Send a pending connection request, optionally to join a specific collection.
+  const sendInvite = async (toUid: string, collectionId?: string, collectionName?: string) => {
     const to = (toUid || '').trim();
     if (!user || !to || to === user.uid) return;
-    const partnerIds: string[] = (profile && profile.partnerIds) || [];
-    if (partnerIds.includes(to)) return; // already linked
-    await setDoc(doc(db, 'invites', `${user.uid}_${to}`), {
-      from: user.uid,
-      to,
+    const inviteId = collectionId ? `${user.uid}_${to}_${collectionId}` : `${user.uid}_${to}`;
+    const data: any = {
+      from: user.uid, to,
       fromName: profile?.displayName || 'Valaki',
       fromPhoto: profile?.photoURL || '',
       status: 'pending',
       createdAt: serverTimestamp(),
-    });
+    };
+    if (collectionId) { data.collectionId = collectionId; data.collectionName = collectionName || ''; }
+    await setDoc(doc(db, 'invites', inviteId), data);
   };
 
-  // Recipient accepts: links BOTH sides, THEN removes the invite. If either link write fails
-  // (e.g. offline), the error propagates and the invite is kept so the user can retry — avoids a
-  // half-linked, unrecoverable state. arrayUnion makes retries idempotent.
   const acceptInvite = async (invite: any) => {
-    if (!user || !invite || !invite.from) return;
-    await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayUnion(invite.from) });
-    await updateDoc(doc(db, 'users', invite.from), { partnerIds: arrayUnion(user.uid) });
+    if (!user || !invite) return;
+    if (invite.collectionId) {
+      const colRef = doc(db, 'collections', invite.collectionId);
+      // Join first — the rules permit adding only your own uid even without read access.
+      await updateDoc(colRef, { memberIds: arrayUnion(user.uid) });
+      try {
+        const snap = await getDoc(colRef); // now readable as a member
+        const members: string[] = (snap.exists() && (snap.data() as any).memberIds) || [];
+        // Establish mutual read links with every member so the derived-match intersection can read all.
+        await Promise.all(
+          members.filter(m => m !== user.uid).flatMap(m => [
+            updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayUnion(m) }),
+            updateDoc(doc(db, 'users', m), { partnerIds: arrayUnion(user.uid) }).catch(() => {}),
+          ])
+        );
+        await updateDoc(doc(db, 'users', user.uid), { activeCollectionId: invite.collectionId });
+      } catch (e) {
+        console.warn('collection link after join failed:', e);
+      }
+    } else {
+      // Legacy 1:1 partner invite.
+      await updateDoc(doc(db, 'users', user.uid), { partnerIds: arrayUnion(invite.from) });
+      await updateDoc(doc(db, 'users', invite.from), { partnerIds: arrayUnion(user.uid) });
+    }
     if (invite.id) await deleteDoc(doc(db, 'invites', invite.id));
   };
 
-  const declineInvite = async (inviteId: string) => {
-    if (!inviteId) return;
-    await deleteDoc(doc(db, 'invites', inviteId));
-  };
-
-  const removePartnerId = async (partnerId: string) => {
-    if (user) {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, { partnerIds: arrayRemove(partnerId) });
-    }
-  };
-
+  // --- Auth + profile listener ---
   useEffect(() => {
-    // Tracks the per-user profile listener so it can be torn down on every auth change
-    // (onAuthStateChanged ignores any value returned from its observer, so we must do it manually).
     let unsubProfile: (() => void) | undefined;
-
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (unsubProfile) {
-        unsubProfile();
-        unsubProfile = undefined;
-      }
-
+      if (unsubProfile) { unsubProfile(); unsubProfile = undefined; }
       setUser(firebaseUser);
       setIsAuthReady(true);
 
       if (firebaseUser) {
         const userRef = doc(db, 'users', firebaseUser.uid);
-
-        unsubProfile = onSnapshot(
-          userRef,
-          (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              // Migrate legacy partnerId (string|null) → partnerIds (array).
-              // Use deleteField() so the key is removed (a literal null would fail isValidUser).
-              if (data.partnerId !== undefined && !data.partnerIds) {
-                updateDoc(userRef, {
-                  partnerIds: data.partnerId ? [data.partnerId] : [],
-                  partnerId: deleteField(),
-                }).catch((e) => console.warn('partnerId migration failed:', e));
-              }
-              setProfile(data);
-            } else {
-              setDoc(
-                userRef,
-                {
-                  uid: firebaseUser.uid,
-                  displayName: firebaseUser.displayName || 'Vendég',
-                  photoURL:
-                    firebaseUser.photoURL ||
-                    `https://ui-avatars.com/api/?name=Vend%C3%A9g&background=f5c518&color=000`,
-                  email: firebaseUser.email || 'guest@cinepair.app',
-                  partnerIds: [],
-                  createdAt: new Date().toISOString(),
-                },
-                { merge: true }
-              ).catch((e) => console.warn('profile create failed:', e));
+        unsubProfile = onSnapshot(userRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.partnerId !== undefined && !data.partnerIds) {
+              updateDoc(userRef, { partnerIds: data.partnerId ? [data.partnerId] : [], partnerId: deleteField() })
+                .catch((e) => console.warn('partnerId migration failed:', e));
             }
-            setLoading(false);
-          },
-          (error) => {
-            // Without this, a denied/errored profile read would leave loading=true forever.
-            console.error('Profile listener error:', error);
-            setLoading(false);
+            setProfile(data);
+          } else {
+            setDoc(userRef, {
+              uid: firebaseUser.uid,
+              displayName: firebaseUser.displayName || 'Vendég',
+              photoURL: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=Vend%C3%A9g&background=f5c518&color=000`,
+              email: firebaseUser.email || 'guest@cinepair.app',
+              partnerIds: [],
+              createdAt: new Date().toISOString(),
+            }, { merge: true }).catch((e) => console.warn('profile create failed:', e));
           }
-        );
+          setLoading(false);
+        }, (error) => { console.error('Profile listener error:', error); setLoading(false); });
       } else {
         setProfile(null);
         setLoading(false);
       }
     });
-
-    return () => {
-      unsubscribe();
-      if (unsubProfile) unsubProfile();
-    };
+    return () => { unsubscribe(); if (unsubProfile) unsubProfile(); };
   }, []);
 
-  // Single, app-wide matches subscription (consumed by both the notification logic and the watchlist).
+  // --- Collections subscription ---
   useEffect(() => {
-    if (!user) {
-      setMatches([]);
-      setMatchesReady(false);
-      return;
-    }
+    if (!user) { setCollections([]); return; }
+    const unsub = subscribeToCollections(user.uid, setCollections);
+    return () => unsub();
+  }, [user]);
+
+  // --- Incoming invites ---
+  useEffect(() => {
+    if (!user) { setInvites([]); return; }
+    const q = query(collection(db, 'invites'), where('to', '==', user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      setInvites(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })).filter((i: any) => i.status === 'pending'));
+    }, (error) => console.error('Invites subscription error:', error));
+    return () => unsub();
+  }, [user]);
+
+  // --- Derived matches for the active collection (intersection of members' likes) ---
+  const activeKey = activeCollection ? `${activeCollection.id}:${[...activeCollection.memberIds].sort().join(',')}` : '';
+  useEffect(() => {
+    if (!user || !activeCollection) { setMatches([]); setMatchesReady(true); return; }
     setMatchesReady(false);
-    const unsub = subscribeToMatches(user.uid, (m) => {
+    const unsub = subscribeToCollectionMatches(activeCollection.memberIds, activeCollection.id, (m) => {
       setMatches(m);
       setMatchesReady(true);
     });
     return () => unsub();
-  }, [user]);
-
-  // Incoming pending connection requests addressed to me.
-  useEffect(() => {
-    if (!user) {
-      setInvites([]);
-      return;
-    }
-    const q = query(collection(db, 'invites'), where('to', '==', user.uid));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setInvites(
-          snap.docs
-            .map((d) => ({ id: d.id, ...(d.data() as any) }))
-            .filter((i: any) => i.status === 'pending')
-        );
-      },
-      (error) => console.error('Invites subscription error:', error)
-    );
-    return () => unsub();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeKey]);
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, matches, matchesReady, invites, loading, isAuthReady, sendInvite, acceptInvite, declineInvite, removePartnerId }}
+      value={{
+        user, profile, collections, activeCollection, matches, matchesReady, invites, loading, isAuthReady,
+        sendInvite, acceptInvite, declineInvite: async (inviteId: string) => { if (inviteId) await deleteDoc(doc(db, 'invites', inviteId)); },
+        createCollection, renameCollection, deleteCollection, leaveCollection, setActiveCollection, removePartnerId,
+      }}
     >
       {children}
     </AuthContext.Provider>

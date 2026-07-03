@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDoc, deleteDoc, query, where, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, deleteDoc, updateDoc, addDoc, arrayRemove, query, where, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 
 export interface Movie {
@@ -313,6 +313,107 @@ export async function getPartnerLikedMovies(partnerIds: string[], myUserId: stri
   } catch (error) {
     console.error("Error fetching partner likes:", error);
     return [];
+  }
+}
+
+// ===============================================================
+// Collections (groups) — matches are DERIVED as the intersection of members' likes.
+// ===============================================================
+export interface Collection {
+  id: string;
+  name: string;
+  ownerId: string;
+  memberIds: string[];
+}
+
+export function subscribeToCollections(uid: string, callback: (cols: Collection[]) => void) {
+  const q = query(collection(db, 'collections'), where('memberIds', 'array-contains', uid));
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
+  }, (error) => console.error('collections subscription error:', error));
+}
+
+export async function createCollection(uid: string, name: string): Promise<string> {
+  const ref = await addDoc(collection(db, 'collections'), {
+    name: (name || '').trim() || 'Új gyűjtő',
+    ownerId: uid,
+    memberIds: [uid],
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function renameCollection(cid: string, name: string) {
+  await updateDoc(doc(db, 'collections', cid), { name: (name || '').trim() || 'Gyűjtő' });
+}
+
+export async function deleteCollection(cid: string) {
+  await deleteDoc(doc(db, 'collections', cid));
+}
+
+export async function leaveCollection(cid: string, uid: string) {
+  await updateDoc(doc(db, 'collections', cid), { memberIds: arrayRemove(uid) });
+}
+
+export async function toggleCollectionWatched(cid: string, movieId: string, watched: boolean) {
+  const ref = doc(db, 'collections', cid, 'watched', movieId);
+  if (watched) await setDoc(ref, { at: serverTimestamp() });
+  else await deleteDoc(ref);
+}
+
+/**
+ * Live-subscribes to the derived matches of a collection: the set of movies that EVERY member
+ * has 'like'd, annotated with the per-collection "watched" flag. Recomputes on any member's
+ * likes changing or the watched set changing.
+ */
+export function subscribeToCollectionMatches(
+  memberIds: string[],
+  cid: string,
+  callback: (matches: { movieId: string; watched: boolean }[]) => void
+): () => void {
+  // A collection needs at least 2 members for a "match" to be meaningful (a shared like).
+  if (!memberIds || memberIds.length < 2) {
+    callback([]);
+    return () => {};
+  }
+  const likeSets: (Set<string> | null)[] = memberIds.map(() => null);
+  let watchedSet = new Set<string>();
+
+  const recompute = () => {
+    if (likeSets.some(s => s === null)) return; // wait until every member's first snapshot arrived
+    let inter = likeSets[0] ? Array.from(likeSets[0]!) : [];
+    for (let i = 1; i < likeSets.length; i++) {
+      const s = likeSets[i]!;
+      inter = inter.filter(id => s.has(id));
+    }
+    callback(inter.map(movieId => ({ movieId, watched: watchedSet.has(movieId) })));
+  };
+
+  const unsubs = memberIds.map((uid, idx) =>
+    onSnapshot(
+      query(collection(db, `users/${uid}/swipes`), where('type', '==', 'like')),
+      (snap) => { likeSets[idx] = new Set(snap.docs.map(d => d.id)); recompute(); },
+      (err) => { console.error(`likes subscription error (member ${uid}):`, err); likeSets[idx] = new Set(); recompute(); }
+    )
+  );
+  const unsubWatched = onSnapshot(
+    collection(db, `collections/${cid}/watched`),
+    (snap) => { watchedSet = new Set(snap.docs.map(d => d.id)); recompute(); },
+    (err) => console.error('watched subscription error:', err)
+  );
+
+  return () => { unsubs.forEach(u => u()); unsubWatched(); };
+}
+
+/** After you like a movie, returns true if every OTHER member has already liked it (instant match). */
+export async function isCollectionMatch(movieId: string, otherMemberIds: string[]): Promise<boolean> {
+  if (!otherMemberIds || otherMemberIds.length === 0) return false;
+  try {
+    const snaps = await Promise.all(otherMemberIds.map(uid => getDoc(doc(db, `users/${uid}/swipes`, movieId))));
+    return snaps.every(s => s.exists() && s.data().type === 'like');
+  } catch (e) {
+    console.warn('collection match check failed:', e);
+    return false;
   }
 }
 
