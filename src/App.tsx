@@ -1258,23 +1258,45 @@ const ProfileScreen = () => {
   const [inviteInput, setInviteInput] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Permission-denied almost always means the Firestore rules aren't published to the project.
+  const errMsg = (e: any, fallback: string) =>
+    e?.code === 'permission-denied'
+      ? 'Nincs jogosultság – a Firestore szabályok nincsenek közzétéve a projektben.'
+      : fallback;
+
   const handleCreate = async () => {
     const name = newColName.trim();
     if (!name) return;
     try { await createCollection(name); setNewColName(''); toast.success('Gyűjtő létrehozva!'); }
-    catch (e) { console.error(e); toast.error('Nem sikerült létrehozni.'); }
+    catch (e: any) { console.error(e); toast.error(errMsg(e, 'Nem sikerült létrehozni.')); }
   };
 
   const handleInvite = async () => {
     const to = inviteInput.trim();
-    if (!to || !activeCollection) return;
+    if (!to) return;
     if (to === user?.uid) { toast.error('Magadat nem hívhatod meg.'); return; }
-    if (activeCollection.memberIds.includes(to)) { toast.error('Ez a felhasználó már tag.'); return; }
+
+    let colId = activeCollection?.id;
+    let colName = activeCollection?.name;
+
+    // First-ever invite with no collection yet: create one on the fly so there's
+    // somewhere to invite into (uses the typed name if present, else a default).
+    if (!colId) {
+      const name = newColName.trim() || 'Közös lista';
+      try {
+        const cid = await createCollection(name);
+        if (!cid) throw new Error('no cid');
+        colId = cid; colName = name; setNewColName('');
+      } catch (e: any) { console.error(e); toast.error(errMsg(e, 'Nem sikerült létrehozni a gyűjtőt.')); return; }
+    } else if (activeCollection!.memberIds.includes(to)) {
+      toast.error('Ez a felhasználó már tag.'); return;
+    }
+
     try {
-      await sendInvite(to, activeCollection.id, activeCollection.name);
-      toast.success(`Meghívó elküldve a(z) „${activeCollection.name}" gyűjtőbe!`);
+      await sendInvite(to, colId!, colName);
+      toast.success(`Meghívó elküldve a(z) „${colName}" gyűjtőbe!`);
       setInviteInput('');
-    } catch (e) { console.error(e); toast.error('Nem sikerült elküldeni a meghívót.'); }
+    } catch (e: any) { console.error(e); toast.error(errMsg(e, 'Nem sikerült elküldeni a meghívót.')); }
   };
 
   const handleRename = async (c: any) => {
@@ -1415,24 +1437,25 @@ const ProfileScreen = () => {
               </button>
             </div>
 
-            {/* Invite a member to the active collection */}
-            {activeCollection && (
-              <div className="pt-6 border-t border-white/5 space-y-3">
-                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Tag meghívása → „{activeCollection.name}"</p>
-                <input
-                  type="text"
-                  value={inviteInput}
-                  onChange={(e) => setInviteInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
-                  placeholder="A meghívott User ID-ja"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
-                />
-                <button onClick={handleInvite} disabled={!inviteInput.trim()}
-                  className="w-full bg-secondary/20 border border-secondary/30 text-secondary font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                  <UserPlus size={18} /> Meghívó küldése
-                </button>
-              </div>
-            )}
+            {/* Invite a member. Always visible — if there's no collection yet, the
+                first invite creates one automatically (see handleInvite). */}
+            <div className="pt-6 border-t border-white/5 space-y-3">
+              <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">
+                {activeCollection ? <>Tag meghívása → „{activeCollection.name}"</> : 'Valaki meghívása (létrejön az első közös gyűjtőd)'}
+              </p>
+              <input
+                type="text"
+                value={inviteInput}
+                onChange={(e) => setInviteInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                placeholder="A meghívott User ID-ja"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold focus:outline-none focus:border-primary/50 transition-colors placeholder:text-white/20"
+              />
+              <button onClick={handleInvite} disabled={!inviteInput.trim()}
+                className="w-full bg-secondary/20 border border-secondary/30 text-secondary font-headline font-black py-4 rounded-2xl uppercase tracking-tight active:scale-95 transition-transform disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <UserPlus size={18} /> Meghívó küldése
+              </button>
+            </div>
 
             {/* Copy my own ID so others can invite me */}
             <button
